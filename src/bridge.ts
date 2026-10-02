@@ -4,11 +4,15 @@ export const desktop = "__TAURI_INTERNALS__" in window;
 export const demo = new URLSearchParams(location.search).has("demo");
 const now = Date.now();
 const providers: Provider[] = ["claude", "openai", "gemini"];
+const query = new URLSearchParams(location.search);
+const demoProviders = query.has("providers")
+  ? query.get("providers")!.split(",")
+  : providers;
 export const initial: Config = {
   schemaVersion: 1,
   position: null,
   settings: {
-    view: "bars",
+    view: demo && query.get("view") === "rings" ? "rings" : "bars",
     theme: "dark",
     opaque: false,
     alwaysOnTop: false,
@@ -28,7 +32,7 @@ export const initial: Config = {
         : provider === "claude"
           ? "claudeCli"
           : "browser",
-    enabled: demo,
+    enabled: demo && demoProviders.includes(provider),
     experimental: false,
     pinnedLimit: null,
     cliPath: null,
@@ -54,7 +58,7 @@ if (demo)
       remaining: i === 0 ? "120" : null,
       remainingPercent: [60, 94, 18][i],
       unlimited: false,
-      source: "manual",
+      source: i === 1 ? "documented" : i === 2 ? "experimental" : "manual",
       observedAt: new Date(now).toISOString(),
     };
     initial.cached[provider] = {

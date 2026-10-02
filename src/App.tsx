@@ -8,19 +8,20 @@ import {
   X,
   Plus,
   Trash,
-  GasPump,
-  WarningCircle,
+  Circle,
+  ChartBar,
 } from "@phosphor-icons/react";
-import { CircularProgressbar, buildStyles } from "react-circular-progressbar";
 import "react-circular-progressbar/dist/styles.css";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import { listen } from "@tauri-apps/api/event";
 import { command, desktop, demo, initial } from "./bridge";
 import { countdown, percent } from "./format";
-import { displayStatus, selectLimit } from "./freshness";
+import { QuotaTile } from "./QuotaTile";
+import { accountName, visibleAccounts, widgetWidth } from "./widget";
 import type { Account, Config, Limit, Provider } from "./types";
 import "./style.css";
+import "./compact.css";
 const names = {
   claude: "Claude",
   openai: "OpenAI",
@@ -66,16 +67,21 @@ export default function App() {
   async function preference(change: Partial<Config["settings"]>) {
     await run("save_settings", { settings: { ...config.settings, ...change } });
   }
-  // Content expansion changes only the local widget size; provider windows never receive this capability.
+  const accounts = visibleAccounts(config.accounts);
+  const panel = settings || expanded !== null;
+  const width = widgetWidth(accounts.length, config.settings.view, panel);
+  // Observe content dimensions, not the current native width: closing a panel
+  // must return to the selected compact footprint without a resize feedback loop.
   useEffect(() => {
     if (!desktop) return;
     const dock = document.querySelector("main")!;
     const observer = new ResizeObserver(() => {
+      const rect = dock.getBoundingClientRect();
       getCurrentWindow()
         .setSize(
           new LogicalSize(
-            window.innerWidth,
-            Math.min(950, Math.ceil(dock.getBoundingClientRect().height) + 28),
+            Math.ceil(rect.width) + 12,
+            Math.min(850, Math.ceil(rect.height) + 12),
           ),
         )
         .catch(() => {});
@@ -88,45 +94,72 @@ export default function App() {
     await getCurrentWindow().startDragging();
     await command("snap_window");
   }
-  const latest = Object.values(config.cached)
-    .map((s) => (s.fetchedAt ? Date.parse(s.fetchedAt) : 0))
-    .filter(Boolean);
   return (
     <main
-      className={`dock ${config.settings.opaque ? "opaque" : ""} view-${config.settings.view}`}
+      className={`dock compact ${config.settings.opaque ? "opaque" : ""} view-${config.settings.view} ${panel ? "panel-open" : ""}`}
+      style={{ width }}
       data-theme={config.settings.theme}
+      data-desktop={desktop}
     >
-      <header>
-        <div className="brand">
-          <GasPump weight="duotone" size={19} />
-          <span>TokenFuel</span>
-        </div>
-        <div className="switch" aria-label="Widget view">
-          {(["bars", "rings"] as const).map((view) => (
-            <button
-              key={view}
-              aria-pressed={config.settings.view === view}
-              className={config.settings.view === view ? "active" : ""}
-              onClick={() => preference({ view })}
-            >
-              {view === "bars" ? "Bars" : "Rings"}
-            </button>
+      <div className="compact-surface">
+        <section
+          className="accounts"
+          aria-label="Remaining allowances"
+          style={{
+            gridTemplateColumns: `repeat(${Math.min(3, accounts.length)}, minmax(0, 1fr))`,
+          }}
+        >
+          {accounts.map((a) => (
+            <QuotaTile
+              key={a.id}
+              account={a}
+              snapshot={config.cached[a.id]}
+              settings={config.settings}
+              now={now}
+              expanded={expanded === a.id}
+              onClick={() => {
+                if (
+                  !a.enabled ||
+                  !config.accounts.some((saved) => saved.id === a.id)
+                ) {
+                  setSettings(true);
+                  setExpanded(null);
+                } else {
+                  setExpanded(expanded === a.id ? null : a.id);
+                  setSettings(false);
+                }
+              }}
+            />
           ))}
-        </div>
-        <div className="tools">
+        </section>
+        <div className="compact-tools" aria-label="TokenFuel controls">
           <button
-            aria-label="Always on top"
-            aria-pressed={config.settings.alwaysOnTop}
+            aria-label="Refresh"
+            title="Refresh usage"
+            disabled={busy}
+            onClick={() => run("refresh")}
+          >
+            <ArrowClockwise className={busy ? "spinning" : ""} />
+          </button>
+          <button
+            aria-label={
+              config.settings.view === "bars"
+                ? "Show ring view"
+                : "Show bar view"
+            }
+            title="Switch bars / rings"
             onClick={() =>
-              preference({ alwaysOnTop: !config.settings.alwaysOnTop })
+              preference({
+                view: config.settings.view === "bars" ? "rings" : "bars",
+              })
             }
           >
-            <PushPin
-              weight={config.settings.alwaysOnTop ? "fill" : "regular"}
-            />
+            {config.settings.view === "bars" ? <Circle /> : <ChartBar />}
           </button>
           <button
             aria-label="Settings"
+            aria-expanded={settings}
+            title="Settings"
             onClick={() => {
               setSettings(!settings);
               setExpanded(null);
@@ -134,180 +167,22 @@ export default function App() {
           >
             <GearSix />
           </button>
-          <button aria-label="Drag widget" onPointerDown={drag}>
+          <button
+            aria-label="Drag widget"
+            title="Drag widget"
+            onPointerDown={drag}
+          >
             <DotsSix />
           </button>
         </div>
-      </header>
+      </div>
       {(demo || !desktop) && (
         <div className="preview-label">
           {demo
-            ? "Design preview · sample data"
-            : "Browser preview · connections require the Windows app"}
+            ? "Sample data"
+            : "Browser preview · use Windows app to connect"}
         </div>
       )}
-      <section className="accounts" aria-label="Remaining allowances">
-        {config.accounts.map((a) => {
-          const snapshot = config.cached[a.id];
-          const q = selectLimit(snapshot, a.pinnedLimit);
-          const p = q?.remainingPercent ?? null;
-          const state = displayStatus(
-            snapshot,
-            q,
-            now,
-            config.settings.intervalSecs,
-            a.connection === "browser",
-          );
-          const warning = p !== null && p < 20;
-          return (
-            <article
-              key={a.id}
-              className={`provider ${a.provider} ${p !== null && p <= 50 ? "deeper" : ""} ${warning ? "low" : ""}`}
-            >
-              <button
-                className="account-heading"
-                aria-expanded={expanded === a.id}
-                onClick={() => {
-                  setExpanded(expanded === a.id ? null : a.id);
-                  setSettings(false);
-                }}
-              >
-                <img src={`/providers/${a.provider}.svg`} alt="" />
-                <span>
-                  <strong>{names[a.provider]}</strong>
-                  <small>
-                    {a.label}
-                    {a.workspace ? ` · ${a.workspace}` : ""}
-                    {q
-                      ? ` · ${q.product && q.product !== "Manual snapshot" ? q.product + " · " : ""}${q.name}`
-                      : ""}
-                  </small>
-                </span>
-              </button>
-              <div className="quota-name">
-                {q
-                  ? `${q.product && q.product !== "Manual snapshot" ? q.product + " · " : ""}${q.name}`
-                  : "Allowance not connected"}
-              </div>
-              {config.settings.view === "rings" ? (
-                <div className="ring-row">
-                  <div className="ring">
-                    <CircularProgressbar
-                      value={p ?? 0}
-                      text={q?.unlimited ? "∞" : percent(p)}
-                      strokeWidth={10}
-                      styles={buildStyles({
-                        pathColor: "var(--accent)",
-                        trailColor: "var(--track)",
-                        textColor: "var(--text)",
-                        textSize: "24px",
-                        pathTransitionDuration: 0.2,
-                      })}
-                    />
-                  </div>
-                  <span>
-                    <strong>
-                      {q?.unlimited
-                        ? "Unlimited"
-                        : p === null
-                          ? "No reading"
-                          : "remaining"}
-                    </strong>
-                    <small>
-                      {q?.resetsAt
-                        ? countdown(q.resetsAt, now)
-                        : q?.resetLabel || countdown(null, now)}
-                    </small>
-                  </span>
-                </div>
-              ) : (
-                <>
-                  <>
-                    {p !== null ? (
-                      <progress
-                        max={100}
-                        value={p}
-                        aria-label={`${names[a.provider]} remaining ${percent(p)}`}
-                      />
-                    ) : (
-                      <div className="unknown-track" aria-hidden="true" />
-                    )}
-                  </>
-                  <div className="remaining">
-                    <strong>
-                      {q?.unlimited
-                        ? "Unlimited"
-                        : p === null
-                          ? "—"
-                          : percent(p)}{" "}
-                      <span>{p !== null ? "remaining" : ""}</span>
-                    </strong>
-                    <small>
-                      {q?.resetsAt
-                        ? countdown(q.resetsAt, now)
-                        : q?.resetLabel || countdown(null, now)}
-                    </small>
-                  </div>
-                </>
-              )}
-              <div className="source-line">
-                {warning ? (
-                  <span>
-                    <WarningCircle /> Low remaining
-                  </span>
-                ) : q?.remaining ? (
-                  `${q.remaining} ${q.unit} left`
-                ) : q?.source === "manual" ? (
-                  "Manual snapshot"
-                ) : q?.source === "experimental" ? (
-                  a.connection === "geminiWeb" ||
-                  a.connection === "claudeCli" ? (
-                    "Experimental polling"
-                  ) : (
-                    "Experimental snapshot"
-                  )
-                ) : q ? (
-                  "Documented source"
-                ) : (
-                  <button
-                    onClick={() => {
-                      setSettings(true);
-                      setExpanded(null);
-                    }}
-                  >
-                    {state === "disconnected"
-                      ? "Connect account"
-                      : state === "loginRequired"
-                        ? "Sign-in required"
-                        : state === "rateLimited"
-                          ? "Waiting to retry"
-                          : state === "offline"
-                            ? "Offline"
-                            : "Reading unavailable"}
-                  </button>
-                )}
-                {state !== "available" && q && (
-                  <span className="status">{state} · cached</span>
-                )}
-              </div>
-              {q && (
-                <small className="reading-age">
-                  {q.source === "manual"
-                    ? "Manual"
-                    : a.connection === "browser"
-                      ? "Captured"
-                      : "Checked"}{" "}
-                  {Math.max(
-                    0,
-                    Math.floor((now - Date.parse(q.observedAt)) / 60000),
-                  )}
-                  m ago
-                </small>
-              )}
-            </article>
-          );
-        })}
-      </section>
       {expanded && (
         <section className="details">
           {(() => {
@@ -316,7 +191,7 @@ export default function App() {
             return (
               <>
                 <div className="section-title">
-                  <strong>All limits · {names[a.provider]}</strong>
+                  <strong>All limits · {accountName(a)}</strong>
                   <button
                     aria-label="Close details"
                     onClick={() => setExpanded(null)}
@@ -331,6 +206,10 @@ export default function App() {
                   </p>
                 )}
                 <p>
+                  {a.label}
+                  {a.workspace ? ` · ${a.workspace}` : ""}
+                </p>
+                <p>
                   {s?.message ||
                     "Connect this account in settings to read its allowance."}
                 </p>
@@ -340,6 +219,17 @@ export default function App() {
                       <strong>{q.name}</strong>
                       <small>
                         {q.product} · {q.scope} · {q.period} · {q.source}
+                      </small>
+                      <small>
+                        {q.resetsAt
+                          ? countdown(q.resetsAt, now)
+                          : q.resetLabel || "Reset not reported"}{" "}
+                        · {q.source === "manual" ? "Snapshot" : "Checked"}{" "}
+                        {Math.max(
+                          0,
+                          Math.floor((now - Date.parse(q.observedAt)) / 60000),
+                        )}
+                        m ago
                       </small>
                       {q.used !== null && (
                         <small>
@@ -411,25 +301,32 @@ export default function App() {
                 <option value="light">Light</option>
               </select>
             </label>
-            {(["opaque", "startup", "alerts", "snapToEdges"] as const).map(
-              (key) => (
-                <label key={key}>
-                  <input
-                    type="checkbox"
-                    checked={config.settings[key]}
-                    onChange={(e) => preference({ [key]: e.target.checked })}
-                  />
+            {(
+              [
+                "opaque",
+                "startup",
+                "alerts",
+                "snapToEdges",
+                "alwaysOnTop",
+              ] as const
+            ).map((key) => (
+              <label key={key}>
+                <input
+                  type="checkbox"
+                  checked={config.settings[key]}
+                  onChange={(e) => preference({ [key]: e.target.checked })}
+                />
+                {
                   {
-                    {
-                      opaque: "Opaque background",
-                      startup: "Start with Windows",
-                      alerts: "Alerts at 20% and 10%",
-                      snapToEdges: "Snap to edges",
-                    }[key]
-                  }
-                </label>
-              ),
-            )}
+                    opaque: "Opaque background",
+                    startup: "Start with Windows",
+                    alerts: "Alerts at 20% and 10%",
+                    snapToEdges: "Snap to edges",
+                    alwaysOnTop: "Always on top",
+                  }[key]
+                }
+              </label>
+            ))}
             <label>
               Poll every{" "}
               <select
@@ -444,6 +341,11 @@ export default function App() {
               </select>
             </label>
           </div>
+          <p className="hint">
+            Only enabled connections appear in the widget. If none are enabled,
+            one account stays visible to help you connect. Temporary failures
+            keep the account visible.
+          </p>
           <p className="hint">
             Connections stay on this device. Browser sign-in windows are
             isolated and session-only. Gemini live view reloads its Usage page;
@@ -483,18 +385,6 @@ export default function App() {
           </button>
         </div>
       )}
-      <footer>
-        <button onClick={() => run("refresh")} disabled={busy}>
-          <ArrowClockwise className={busy ? "spinning" : ""} />
-          {busy ? "Refreshing…" : "Refresh"}
-        </button>
-        <span>
-          {latest.length
-            ? `Updated ${Math.max(0, Math.floor((now - Math.max(...latest)) / 60000))}m ago`
-            : "No readings yet"}
-        </span>
-        <span className="local">Local only</span>
-      </footer>
     </main>
   );
 }

@@ -65,20 +65,36 @@ pub fn codex(value: &Value) -> Vec<UsageLimit> {
             let Some(p) = window.get("usedPercent").and_then(Value::as_f64) else {
                 continue;
             };
-            let label = window
+            let minutes = window
                 .get("windowDurationMins")
                 .and_then(Value::as_i64)
-                .filter(|m| *m > 0)
+                .filter(|m| *m > 0);
+            let quota_id = minutes
+                .map(|minutes| {
+                    let repeated = ["primary", "secondary"]
+                        .iter()
+                        .filter(|slot| {
+                            bucket
+                                .get(**slot)
+                                .and_then(|w| w.get("windowDurationMins"))
+                                .and_then(Value::as_i64)
+                                == Some(minutes)
+                        })
+                        .count()
+                        > 1;
+                    if repeated {
+                        format!("{id}:window:{minutes}:{slot}")
+                    } else {
+                        format!("{id}:window:{minutes}")
+                    }
+                })
+                .unwrap_or_else(|| format!("{id}:unknown:{slot}"));
+            let label = minutes
                 .map(period_name)
                 .unwrap_or_else(|| "Reported window".into());
-            if let Some(mut q) = UsageLimit::percentage(
-                &format!("{id}:{slot}"),
-                &label,
-                product,
-                "rolling",
-                p,
-                Source::Documented,
-            ) {
+            if let Some(mut q) =
+                UsageLimit::percentage(&quota_id, &label, product, "rolling", p, Source::Documented)
+            {
                 q.resets_at = timestamp(window.get("resetsAt"));
                 q.period = match window.get("windowDurationMins").and_then(Value::as_i64) {
                     Some(10080) => "weekly",
@@ -133,14 +149,34 @@ pub fn claude(value: &Value) -> Vec<UsageLimit> {
     }
     if let Some(limits) = value.get("limits").and_then(Value::as_array) {
         for v in limits {
-            let Some(p) = v.get("percent").and_then(Value::as_f64) else {
+            let Some(p) = v
+                .get("percent")
+                .or_else(|| v.get("utilization"))
+                .and_then(Value::as_f64)
+            else {
                 continue;
             };
             let kind = v.get("kind").and_then(Value::as_str).unwrap_or("reported");
             let model = v
                 .pointer("/scope/model/display_name")
                 .and_then(Value::as_str)
+                .or_else(|| v.pointer("/scope/model/id").and_then(Value::as_str))
                 .unwrap_or("");
+            // Non-model scopes also identify separate pools. Never let two
+            // workspace/feature quotas share a pin or alert identity.
+            let scope_identity = v
+                .get("scope")
+                .filter(|scope| !scope.is_null())
+                .map(|scope| {
+                    let hash = scope
+                        .to_string()
+                        .bytes()
+                        .fold(0xcbf29ce484222325u64, |hash, byte| {
+                            (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3)
+                        });
+                    format!("{hash:016x}")
+                })
+                .unwrap_or_default();
             let label = if model.is_empty() {
                 kind.replace('_', " ")
             } else {
@@ -151,7 +187,11 @@ pub fn claude(value: &Value) -> Vec<UsageLimit> {
                     "scoped:{kind}:{}",
                     v.pointer("/scope/model/id")
                         .and_then(Value::as_str)
-                        .unwrap_or(model)
+                        .unwrap_or(if model.is_empty() {
+                            &scope_identity
+                        } else {
+                            model
+                        })
                 ),
                 &label,
                 "Claude",
@@ -160,7 +200,10 @@ pub fn claude(value: &Value) -> Vec<UsageLimit> {
                 Source::Experimental,
             ) {
                 q.scope = if model.is_empty() {
-                    "account".into()
+                    v.get("scope")
+                        .filter(|scope| !scope.is_null())
+                        .map(Value::to_string)
+                        .unwrap_or_else(|| "account".into())
                 } else {
                     model.into()
                 };
@@ -264,6 +307,20 @@ mod tests {
         );
     }
     #[test]
+    fn codex_pin_tracks_window_duration_when_provider_moves_weekly_to_primary() {
+        let both = codex(
+            &json!({"rateLimits":{"primary":{"usedPercent":10,"windowDurationMins":300},"secondary":{"usedPercent":20,"windowDurationMins":10080}}}),
+        );
+        let weekly_only =
+            codex(&json!({"rateLimits":{"primary":{"usedPercent":21,"windowDurationMins":10080}}}));
+        assert_eq!(both[1].id, weekly_only[0].id);
+        assert_ne!(both[0].id, weekly_only[0].id);
+        let duplicate_duration = codex(
+            &json!({"rateLimits":{"primary":{"usedPercent":10,"windowDurationMins":300},"secondary":{"usedPercent":20,"windowDurationMins":300}}}),
+        );
+        assert_ne!(duplicate_duration[0].id, duplicate_duration[1].id);
+    }
+    #[test]
     fn disabled_missing_changed_fields_do_not_become_zero_or_unlimited() {
         assert!(claude(&json!({"five_hour":null,"spend":{"enabled":false}})).is_empty());
         assert!(codex(&json!({"rateLimits":{"primary":{"usedPercent":"unknown"}}})).is_empty());
@@ -275,6 +332,20 @@ mod tests {
         );
         assert_eq!(q.len(), 2);
         assert_eq!(q[1].remaining_percent, Some(10.0));
+    }
+
+    #[test]
+    fn scoped_utilization_alias_and_non_model_scopes_remain_distinct() {
+        let a = json!({"kind":"monthly_scoped","utilization":43,"scope":{"workspace":"alpha"}});
+        let b = json!({"kind":"monthly_scoped","percent":80,"scope":{"workspace":"beta"}});
+        let first = claude(&json!({"limits":[a.clone(),b.clone()]}));
+        let reordered = claude(&json!({"limits":[b,a]}));
+        assert_eq!(first.len(), 2);
+        assert_eq!(first[0].remaining_percent, Some(57.0));
+        assert!(first[0].scope.contains("alpha"));
+        assert_ne!(first[0].id, first[1].id);
+        assert_eq!(first[0].id, reordered[1].id);
+        assert_eq!(first[1].id, reordered[0].id);
     }
     #[test]
     fn currency_mismatch_does_not_create_a_percentage() {

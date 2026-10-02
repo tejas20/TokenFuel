@@ -13,7 +13,7 @@ Git, GitHub CLI, Rust, Node.js, pnpm and Python are not app runtime dependencies
 
 ## Current private preview access
 
-Open [TokenFuel releases](https://github.com/tejas20/TokenFuel/releases) while signed in to GitHub. The current preview is `v0.1.0-review.1`, with these assets:
+Open [TokenFuel releases](https://github.com/tejas20/TokenFuel/releases) while signed in to GitHub. The current preview is `v0.1.0-compact.1`, with these assets:
 
 - `TokenFuel_0.1.0_x64-setup.exe`
 - `TokenFuel_0.1.0_x64-portable.zip`
@@ -54,7 +54,7 @@ From an existing checkout, start with one command:
 .\Start-TokenFuel.cmd
 ```
 
-The launcher downloads the portable ZIP and `SHA256SUMS.txt` for the pinned `v0.1.0-review.1` release using GitHub CLI. It verifies the ZIP before extraction, saves the executable's checksum locally, and rechecks that checksum before later launches. A valid cached copy starts without another download or GitHub authentication. The cache is `%LOCALAPPDATA%\TokenFuel\Preview\v0.1.0-review.1`.
+The launcher downloads the portable ZIP and `SHA256SUMS.txt` for the pinned `v0.1.0-compact.1` release using GitHub CLI. It verifies the ZIP before extraction, saves the executable's checksum locally, and rechecks that checksum before later launches. A valid cached copy starts without another download or GitHub authentication. The cache is `%LOCALAPPDATA%\TokenFuel\Preview\v0.1.0-compact.1`.
 
 The CMD wrapper applies its PowerShell execution setting to that process only; it does not change machine policy. Provider connections and Windows startup still require the user's choices. To download and verify without launching:
 
