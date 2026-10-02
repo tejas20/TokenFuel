@@ -118,8 +118,8 @@ fn save_account(
         return Err("Account label is too long.".into());
     }
     let mut c = state.config.lock().unwrap();
-    if account.enabled && is_local_session(&account.connection) && !account.has_custom_secret {
-        if c.accounts.iter().any(|a| {
+    if account.enabled && is_local_session(&account.connection) && !account.has_custom_secret
+        && c.accounts.iter().any(|a| {
             a.id != account.id
                 && a.enabled
                 && a.provider == account.provider
@@ -131,7 +131,6 @@ fn save_account(
                 account.provider.display_name()
             ));
         }
-    }
     let clear = c
         .accounts
         .iter()

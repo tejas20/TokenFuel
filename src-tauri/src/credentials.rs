@@ -125,11 +125,11 @@ pub fn decode_secret(bytes: &[u8]) -> Option<String> {
         return None;
     }
     if bytes.len() >= 2
-        && bytes.len() % 2 == 0
+        && bytes.len().is_multiple_of(2)
         && bytes.iter().skip(1).step_by(2).all(|byte| *byte == 0)
     {
         let units = bytes
-            .chunks_exact(2)
+            .as_chunks::<2>().0.iter()
             .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
             .collect::<Vec<_>>();
         return String::from_utf16(&units).ok().map(|s| s.trim_matches('\0').to_string());

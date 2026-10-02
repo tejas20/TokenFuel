@@ -346,48 +346,47 @@ pub fn cursor(value: &Value) -> Vec<UsageLimit> {
 
     let has_components = auto.is_some() || api.is_some();
 
-    if let Some(used) = auto {
-        if let Some(mut q) = UsageLimit::percentage(
+    if let Some(used) = auto
+        && let Some(mut q) = UsageLimit::percentage(
             "cursor:plan:auto",
             "Cursor Models",
             "Cursor",
             "monthly",
             used,
             Source::Experimental,
-        ) {
-            q.resets_at = reset;
-            out.push(q);
-        }
+        )
+    {
+        q.resets_at = reset;
+        out.push(q);
     }
 
-    if let Some(used) = api {
-        if let Some(mut q) = UsageLimit::percentage(
+    if let Some(used) = api
+        && let Some(mut q) = UsageLimit::percentage(
             "cursor:plan:api",
             "API models",
             "Cursor",
             "monthly",
             used,
             Source::Experimental,
-        ) {
-            q.resets_at = reset;
-            out.push(q);
-        }
+        )
+    {
+        q.resets_at = reset;
+        out.push(q);
     }
 
-    if !has_components {
-        if let Some(used) = total {
-            if let Some(mut q) = UsageLimit::percentage(
-                "cursor:plan:total",
-                "Monthly plan",
-                "Cursor",
-                "monthly",
-                used,
-                Source::Experimental,
-            ) {
-                q.resets_at = reset;
-                out.push(q);
-            }
-        }
+    if !has_components
+        && let Some(used) = total
+        && let Some(mut q) = UsageLimit::percentage(
+            "cursor:plan:total",
+            "Monthly plan",
+            "Cursor",
+            "monthly",
+            used,
+            Source::Experimental,
+        )
+    {
+        q.resets_at = reset;
+        out.push(q);
     }
 
     out
@@ -435,18 +434,17 @@ pub fn grok(value: &Value) -> Vec<UsageLimit> {
         .get("creditUsagePercent")
         .or_else(|| config.get("credit_usage_percent"))
         .and_then(Value::as_f64)
-    {
-        if let Some(mut q) = UsageLimit::percentage(
+        && let Some(mut q) = UsageLimit::percentage(
             "grok:credits",
             "Grok Credits",
             "Grok",
             period,
             used,
             Source::Experimental,
-        ) {
-            q.resets_at = reset;
-            out.push(q);
-        }
+        )
+    {
+        q.resets_at = reset;
+        out.push(q);
     }
 
     // 2. On-demand usage / spending
@@ -469,23 +467,152 @@ pub fn grok(value: &Value) -> Vec<UsageLimit> {
     }
 
     // 3. Prepaid balance
-    if let Some(balance) = grok_cents(config.get("prepaidBalance").or_else(|| config.get("prepaid_balance"))) {
-        if balance > Decimal::ZERO {
-            if let Ok(mut q) = UsageLimit::amounts(
-                "grok:prepaid_balance",
-                "Prepaid balance",
-                "Grok",
-                "USD",
-                "balance",
-                Decimal::ZERO,
-                Some(balance),
-                Source::Experimental,
-            ) {
-                q.used = None;
-                q.remaining = Some(balance.normalize().to_string());
-                q.total = Some(balance.normalize().to_string());
-                q.remaining_percent = None;
-                out.push(q);
+    if let Some(balance) = grok_cents(config.get("prepaidBalance").or_else(|| config.get("prepaid_balance")))
+        && balance > Decimal::ZERO
+        && let Ok(mut q) = UsageLimit::amounts(
+            "grok:prepaid_balance",
+            "Prepaid balance",
+            "Grok",
+            "USD",
+            "balance",
+            Decimal::ZERO,
+            Some(balance),
+            Source::Experimental,
+        )
+    {
+        q.used = None;
+        q.remaining = Some(balance.normalize().to_string());
+        q.total = Some(balance.normalize().to_string());
+        q.remaining_percent = None;
+        out.push(q);
+    }
+
+    out
+}
+
+/// GitHub Copilot quota and entitlement status.
+/// Handles documented quota_snapshots as well as limited_user_quotas.
+pub fn copilot(value: &Value) -> Vec<UsageLimit> {
+    let mut out = Vec::new();
+    let reset = timestamp(
+        value
+            .get("quota_reset_date_utc")
+            .or_else(|| value.get("quotaResetDateUtc"))
+            .or_else(|| value.get("quota_reset_date"))
+            .or_else(|| value.get("limited_user_reset_date"))
+            .or_else(|| value.get("resetDate")),
+    );
+
+    if let Some(snapshots) = value
+        .get("quota_snapshots")
+        .or_else(|| value.get("quotaSnapshots"))
+        .and_then(Value::as_object)
+    {
+        for (key, snap) in snapshots {
+            let name = match key.as_str() {
+                "premium_interactions" => "Premium requests",
+                "chat" => "Chat",
+                "completions" => "Code completions",
+                other => other,
+            };
+            let unit = match key.as_str() {
+                "completions" => "completions",
+                _ => "requests",
+            };
+            let unlimited = snap.get("unlimited").and_then(Value::as_bool).unwrap_or(false)
+                || snap.get("entitlement").and_then(Value::as_i64) == Some(-1);
+
+            if unlimited {
+                if let Ok(mut q) = UsageLimit::amounts(
+                    &format!("copilot:{key}"),
+                    name,
+                    "Copilot",
+                    unit,
+                    "monthly",
+                    Decimal::ZERO,
+                    None,
+                    Source::Documented,
+                ) {
+                    q.unlimited = true;
+                    q.used = None;
+                    q.total = None;
+                    q.remaining = None;
+                    q.remaining_percent = None;
+                    q.resets_at = reset;
+                    out.push(q);
+                }
+            } else {
+                let ent = decimal(snap.get("entitlement"));
+                let rem = decimal(snap.get("remaining"));
+                let pct_rem = snap
+                    .get("percent_remaining")
+                    .or_else(|| snap.get("percentRemaining"))
+                    .and_then(Value::as_f64);
+
+                if let (Some(ent), Some(rem)) = (ent, rem) {
+                    let used = (ent - rem).max(Decimal::ZERO);
+                    if let Ok(mut q) = UsageLimit::amounts(
+                        &format!("copilot:{key}"),
+                        name,
+                        "Copilot",
+                        unit,
+                        "monthly",
+                        used,
+                        Some(ent),
+                        Source::Documented,
+                    ) {
+                        if let Some(p) = pct_rem {
+                            q.remaining_percent = Some(p.clamp(0.0, 100.0));
+                        }
+                        q.resets_at = reset;
+                        out.push(q);
+                    }
+                } else if let Some(p) = pct_rem
+                    && let Some(mut q) = UsageLimit::percentage(
+                        &format!("copilot:{key}"),
+                        name,
+                        "Copilot",
+                        "monthly",
+                        100.0 - p,
+                        Source::Documented,
+                    )
+                {
+                    q.resets_at = reset;
+                    out.push(q);
+                }
+            }
+        }
+    } else if let Some(limited) = value.get("limited_user_quotas").and_then(Value::as_object) {
+        let monthly = value.get("monthly_quotas").and_then(Value::as_object);
+        for (key, rem_val) in limited {
+            let name = match key.as_str() {
+                "premium_interactions" => "Premium requests",
+                "chat" => "Chat",
+                "completions" => "Code completions",
+                other => other,
+            };
+            let unit = match key.as_str() {
+                "completions" => "completions",
+                _ => "requests",
+            };
+            let rem = decimal(Some(rem_val));
+            let total = monthly.and_then(|m| m.get(key)).and_then(|v| decimal(Some(v)));
+
+            if let (Some(rem), Some(tot)) = (rem, total) {
+                let used = (tot - rem).max(Decimal::ZERO);
+                if let Ok(mut q) = UsageLimit::amounts(
+                    &format!("copilot:{key}"),
+                    name,
+                    "Copilot",
+                    unit,
+                    "monthly",
+                    used,
+                    Some(tot),
+                    Source::Documented,
+                ) {
+                    q.resets_at = reset;
+                    out.push(q);
+                }
             }
         }
     }
@@ -698,5 +825,44 @@ mod tests {
 
         // Product breakdowns (Build, Chat, API) must not become separate depleting meters
         assert!(q.iter().all(|x| x.name != "Build" && x.name != "Chat" && x.name != "API"));
+    }
+
+    #[test]
+    fn copilot_parses_premium_unlimited_and_completions() {
+        let text = include_str!("../tests/fixtures/copilot.json");
+        let v: Value = serde_json::from_str(text).unwrap();
+        let q = copilot(&v);
+        assert_eq!(q.len(), 3);
+
+        // Premium interactions: entitlement 300, remaining 210, percent 70%
+        let premium = q.iter().find(|x| x.id == "copilot:premium_interactions").unwrap();
+        assert_eq!(premium.name, "Premium requests");
+        assert_eq!(premium.used.as_deref(), Some("90"));
+        assert_eq!(premium.total.as_deref(), Some("300"));
+        assert_eq!(premium.remaining.as_deref(), Some("210"));
+        assert_eq!(premium.remaining_percent, Some(70.0));
+        assert_eq!(premium.unit, "requests");
+        assert!(!premium.unlimited);
+        assert_eq!(
+            premium.resets_at.unwrap().to_rfc3339(),
+            "2026-11-01T00:00:00+00:00"
+        );
+
+        // Chat: unlimited (-1 entitlement)
+        let chat = q.iter().find(|x| x.id == "copilot:chat").unwrap();
+        assert_eq!(chat.name, "Chat");
+        assert!(chat.unlimited);
+        assert_eq!(chat.remaining_percent, None);
+        assert_eq!(chat.unit, "requests");
+
+        // Completions: entitlement 2000, remaining 1500, percent 75%
+        let completions = q.iter().find(|x| x.id == "copilot:completions").unwrap();
+        assert_eq!(completions.name, "Code completions");
+        assert_eq!(completions.used.as_deref(), Some("500"));
+        assert_eq!(completions.total.as_deref(), Some("2000"));
+        assert_eq!(completions.remaining.as_deref(), Some("1500"));
+        assert_eq!(completions.remaining_percent, Some(75.0));
+        assert_eq!(completions.unit, "completions");
+        assert!(!completions.unlimited);
     }
 }

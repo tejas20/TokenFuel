@@ -254,6 +254,57 @@ function getDemoLimits(provider: Provider, now: number): Limit[] {
           observedAt: new Date(now).toISOString(),
         },
       ];
+    case "copilot":
+      return [
+        {
+          id: "copilot:premium_interactions",
+          name: "Premium requests",
+          product: "Copilot",
+          scope: "account",
+          unit: "requests",
+          period: "monthly",
+          resetsAt: new Date(now + 2592000000).toISOString(),
+          used: "90",
+          total: "300",
+          remaining: "210",
+          remainingPercent: 70,
+          unlimited: false,
+          source: "documented",
+          observedAt: new Date(now).toISOString(),
+        },
+        {
+          id: "copilot:chat",
+          name: "Chat",
+          product: "Copilot",
+          scope: "account",
+          unit: "requests",
+          period: "monthly",
+          resetsAt: new Date(now + 2592000000).toISOString(),
+          used: null,
+          total: null,
+          remaining: null,
+          remainingPercent: null,
+          unlimited: true,
+          source: "documented",
+          observedAt: new Date(now).toISOString(),
+        },
+        {
+          id: "copilot:completions",
+          name: "Code completions",
+          product: "Copilot",
+          scope: "account",
+          unit: "completions",
+          period: "monthly",
+          resetsAt: new Date(now + 2592000000).toISOString(),
+          used: "500",
+          total: "2000",
+          remaining: "1500",
+          remainingPercent: 75,
+          unlimited: false,
+          source: "documented",
+          observedAt: new Date(now).toISOString(),
+        },
+      ];
     default:
       return [
         {

@@ -226,13 +226,13 @@ fn query_single_param(conn: &Connection, sql: &str, param: &str) -> Result<Optio
             }
             let slice = std::slice::from_raw_parts(text_ptr, bytes as usize);
             let s = String::from_utf8_lossy(slice).to_string();
-            return Ok(Some(s));
+            Ok(Some(s))
         } else if step_rc == SQLITE_DONE {
-            return Ok(None);
+            Ok(None)
         } else if step_rc == SQLITE_BUSY || step_rc == SQLITE_LOCKED {
-            return Err("SQLite database busy or locked.".into());
+            Err("SQLite database busy or locked.".into())
         } else {
-            return Err(format!("SQLite step error: code {step_rc}"));
+            Err(format!("SQLite step error: code {step_rc}"))
         }
     }
 }
