@@ -66,7 +66,28 @@ if (demo)
       provider,
       status: "available",
       message: "Design preview · fictional sample data.",
-      limits: [q],
+      // Show the real multi-window shape in design previews, not one pool per provider.
+      limits:
+        provider === "claude"
+          ? [q]
+          : [
+              {
+                ...q,
+                id: "sample-current",
+                name: "5 hours",
+                period: "rolling",
+                remainingPercent: i === 1 ? 94 : 66,
+                resetsAt: new Date(now + 7800000).toISOString(),
+              },
+              {
+                ...q,
+                id: "sample-weekly",
+                name: "Weekly",
+                period: "weekly",
+                remainingPercent: i === 1 ? 84 : 18,
+                resetsAt: new Date(now + 259200000).toISOString(),
+              },
+            ],
       fetchedAt: new Date(now).toISOString(),
       retryAt: null,
     };

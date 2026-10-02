@@ -13,7 +13,7 @@ Git, GitHub CLI, Rust, Node.js, pnpm and Python are not app runtime dependencies
 
 ## Current private preview access
 
-Open [TokenFuel releases](https://github.com/tejas20/TokenFuel/releases) while signed in to GitHub. The current preview is `v0.1.0-compact.1`, with these assets:
+Open [TokenFuel releases](https://github.com/tejas20/TokenFuel/releases) while signed in to GitHub. The current preview is `v0.1.0-compact.2`, with these assets:
 
 - `TokenFuel_0.1.0_x64-setup.exe`
 - `TokenFuel_0.1.0_x64-portable.zip`
@@ -54,7 +54,7 @@ From an existing checkout, start with one command:
 .\Start-TokenFuel.cmd
 ```
 
-The launcher downloads the portable ZIP and `SHA256SUMS.txt` for the pinned `v0.1.0-compact.1` release using GitHub CLI. It verifies the ZIP before extraction, saves the executable's checksum locally, and rechecks that checksum before later launches. A valid cached copy starts without another download or GitHub authentication. The cache is `%LOCALAPPDATA%\TokenFuel\Preview\v0.1.0-compact.1`.
+The launcher downloads the portable ZIP and `SHA256SUMS.txt` for the pinned `v0.1.0-compact.2` release using GitHub CLI. It verifies the ZIP before extraction, saves the executable's checksum locally, and rechecks that checksum before later launches. A valid cached copy starts without another download or GitHub authentication. The cache is `%LOCALAPPDATA%\TokenFuel\Preview\v0.1.0-compact.2`.
 
 The CMD wrapper applies its PowerShell execution setting to that process only; it does not change machine policy. Provider connections and Windows startup still require the user's choices. To download and verify without launching:
 
@@ -78,6 +78,8 @@ The hashes must match, ignoring letter case. Do not run a download whose hash di
 ## Updates and troubleshooting
 
 There is no automatic updater in this preview. Quit TokenFuel using its tray menu before installing a newer release or replacing portable files. Download the intended version from Releases and verify its checksum. The launcher stays on its pinned preview even after new assets or source commits appear; a later launcher must explicitly target a newer release. Released binaries do not automatically include subsequent changes on `main`.
+
+For an existing source checkout, quit the older running app, run `git pull --ff-only`, then `.\Start-TokenFuel.cmd` to use the checked-in launcher's new version. The `v0.1.0-compact.2` preview fixes hidden weekly/monthly windows: each reported pool is visible in bars and rings without opening details. A provider that reports no monthly quota still has no monthly counter; Claude Enterprise live monthly validation remains outstanding.
 
 - **Release missing / download denied:** check the signed-in account and draft-release access. For CLI downloads, run `gh auth status` and authenticate the correct account.
 - **GitHub CLI missing:** use the browser installer, or install GitHub CLI if you prefer the launcher.

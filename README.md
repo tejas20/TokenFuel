@@ -1,13 +1,13 @@
 # TokenFuel
 
-A Windows desktop widget for remaining AI subscription allowances. Private development preview; MIT licensed. The compact soft-glass widget switches between Slim Strip and Mini Rings. Only enabled connections appear; one Connect tile stays visible when none are enabled. It includes separate account/workspace pools, quota pinning, tray controls, remembered position, optional startup and threshold alerts.
+A Windows desktop widget for remaining AI subscription allowances. Private development preview; MIT licensed. The compact soft-glass widget switches between Slim Strip and Mini Rings. Each connected account shows all reported quota windows separately, including weekly and monthly allowances when available, with remaining values and reset countdowns. Pinning moves a quota first without hiding other pools. Only enabled connections appear; one Connect tile stays visible when none are enabled. It includes separate account/workspace pools, tray controls, remembered position, optional startup and threshold alerts.
 
 ## Install and run
 
 **Recommended: download the Windows installer.** No Git, GitHub CLI, Rust, Node, pnpm or Python is needed to run the prebuilt app.
 
 1. Sign in to GitHub in your browser and open [TokenFuel releases](https://github.com/tejas20/TokenFuel/releases).
-2. Open preview `v0.1.0-compact.1` and download `TokenFuel_0.1.0_x64-setup.exe`.
+2. Open preview `v0.1.0-compact.2` and download `TokenFuel_0.1.0_x64-setup.exe`.
 3. Run the installer, then open TokenFuel from the Start menu. Open Settings to connect your accounts; Windows startup is opt-in.
 
 Requires Windows 10/11 x64. The installer installs for the current user and can download WebView2 if it is missing. **The repository is private and this preview is still a draft:** download access currently requires an account with push access to the repository. Ordinary read access is insufficient for the draft. The binaries are unsigned development builds.
@@ -25,7 +25,7 @@ gh repo clone tejas20/TokenFuel
 if ($LASTEXITCODE -eq 0) { .\TokenFuel\Start-TokenFuel.cmd }
 ```
 
-From an existing checkout, the single command is `.\Start-TokenFuel.cmd`. It downloads the prebuilt app, verifies the ZIP against the release's SHA-256 checksum and caches it under `%LOCALAPPDATA%\TokenFuel\Preview\v0.1.0-compact.1`. Subsequent launches verify the cached executable against its local checksum. It needs no developer toolchain, but WebView2 must already be installed. The launcher is pinned to this preview; it does not automatically update. Checksums check file integrity; they do not replace publisher code signing.
+From an existing checkout, the single command is `.\Start-TokenFuel.cmd`. It downloads the prebuilt app, verifies the ZIP against the release's SHA-256 checksum and caches it under `%LOCALAPPDATA%\TokenFuel\Preview\v0.1.0-compact.2`. Subsequent launches verify the cached executable against its local checksum. It needs no developer toolchain, but WebView2 must already be installed. The launcher is pinned to this preview; it does not automatically update. Checksums check file integrity; they do not replace publisher code signing. When upgrading an older checkout, quit TokenFuel from its tray menu, run `git pull --ff-only`, then run the launcher again.
 
 ### Connect accounts
 

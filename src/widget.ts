@@ -1,4 +1,4 @@
-import type { Account, Settings } from "./types";
+import type { Account, Limit, Settings, Snapshot } from "./types";
 
 export const emptyAccount: Account = {
   id: "unconfigured",
@@ -33,6 +33,30 @@ export function accountName(a: Account): string {
   ];
 }
 
+// Pinning controls prominence, not visibility: every reported pool stays separate.
+export function visibleLimits(
+  snapshot: Snapshot | undefined,
+  pinned: string | null,
+): Limit[] {
+  const limits = snapshot?.limits ?? [];
+  const featured = limits.find((q) => q.id === pinned);
+  return featured
+    ? [featured, ...limits.filter((q) => q !== featured)]
+    : limits;
+}
+
+export function quotaLabel(q: Limit): string {
+  const period = (
+    { weekly: "Weekly", monthly: "Monthly", daily: "Daily" } as Record<
+      string,
+      string
+    >
+  )[q.period];
+  return period && !q.name.toLowerCase().includes(period.toLowerCase())
+    ? `${period} · ${q.name}`
+    : q.name;
+}
+
 export function widgetWidth(
   count: number,
   view: Settings["view"],
@@ -40,5 +64,5 @@ export function widgetWidth(
 ): number {
   if (panel) return 540;
   // Additional accounts wrap at three columns instead of stretching across monitors.
-  return Math.min(3, Math.max(1, count)) * (view === "bars" ? 166 : 96) + 48;
+  return Math.min(3, Math.max(1, count)) * (view === "bars" ? 166 : 144) + 48;
 }

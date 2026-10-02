@@ -45,7 +45,7 @@ test("temporary poll failures cannot hide enabled accounts; duplicate providers 
 test("widget shrinks with account count and view, but panels have usable space", () => {
   expect(widgetWidth(1, "bars", false)).toBe(214);
   expect(widgetWidth(2, "bars", false)).toBe(380);
-  expect(widgetWidth(2, "rings", false)).toBe(240);
+  expect(widgetWidth(2, "rings", false)).toBe(336);
   expect(widgetWidth(5, "bars", false)).toBe(546);
   expect(widgetWidth(1, "rings", true)).toBe(540);
 });

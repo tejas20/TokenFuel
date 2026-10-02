@@ -26,11 +26,12 @@ body {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 2px;
   min-width: 0;
   padding: 8px 12px;
-  height: 82px;
+  min-height: 82px;
+  height: auto;
   border-radius: 0;
   text-align: left;
   position: relative;
@@ -63,6 +64,49 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.tile-identity {
+  font-size: 10px;
+  line-height: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tile-limits {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: 7px;
+  margin-top: 4px;
+}
+.compact .quota-window.provider {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0;
+  border-left: 0;
+  width: 100%;
+}
+.compact .quota-window + .quota-window {
+  border-top: 1px solid var(--border);
+  padding-top: 7px;
+}
+.quota-window .tile-quota {
+  color: var(--text);
+  font-weight: 500;
+}
+.tile-quota svg {
+  width: 10px;
+  height: 10px;
+  vertical-align: middle;
+  margin-right: 3px;
+}
+.tile-amount {
+  font-size: 10px;
+  line-height: 12px;
+  color: var(--text);
+  overflow-wrap: anywhere;
 }
 .openai .tile-heading img {
   filter: brightness(0) saturate(100%) invert(80%) sepia(25%) saturate(609%)
@@ -114,6 +158,7 @@ body {
 }
 .tile-caption {
   font-size: 10px;
+  white-space: normal;
 }
 .attention {
   color: var(--text);
@@ -152,11 +197,37 @@ body {
   touch-action: none;
 }
 .compact.view-rings .quota-tile.provider {
-  height: 114px;
+  min-height: 100px;
+  height: auto;
   padding: 7px 8px;
   gap: 4px;
+  align-items: stretch;
+  text-align: left;
+}
+.compact.view-rings .quota-window.provider {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  column-gap: 6px;
+  row-gap: 2px;
   align-items: center;
-  text-align: center;
+}
+.view-rings .quota-window .mini-ring {
+  grid-column: 1;
+  grid-row: 1 / span 3;
+  width: 40px;
+  height: 40px;
+}
+.compact.view-rings .mini-ring svg {
+  width: 40px;
+  height: 40px;
+}
+.view-rings .quota-window .tile-quota,
+.view-rings .quota-window .tile-caption,
+.view-rings .quota-window .tile-amount {
+  grid-column: 2;
+}
+.view-rings .quota-window .tile-caption {
+  white-space: normal;
 }
 .view-rings .tile-heading {
   gap: 4px;
