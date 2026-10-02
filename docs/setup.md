@@ -1,0 +1,11 @@
+# Windows setup
+
+This development machine has Git and bundled Node.js/pnpm. Installed for TokenFuel: GitHub CLI, Rust stable MSVC 1.99.0, Visual Studio 2022 Build Tools with the Native Desktop C++ workload and recommended Windows SDK. WebView2 is present. Python is bundled but optional.
+
+For a standalone machine, install Git, Node.js 24 LTS, pnpm 11.19.0, Rust through the official rustup installer, and Microsoft C++ Build Tools. The checked-in toolchain file selects Rust 1.99.0. Choose **Desktop development with C++**, including the Windows SDK. Restart the terminal so Cargo and GitHub CLI are on PATH.
+
+[Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) are the authority for desktop build requirements. Use the Windows certificate store for Node installations behind a trusted enterprise TLS proxy: `$env:NODE_USE_SYSTEM_CA='1'`. Do not disable certificate validation.
+
+`pnpm install --frozen-lockfile`, then `pnpm tauri dev`. Use `pnpm tauri build` for NSIS and the portable executable. The first build downloads Rust crates and NSIS tooling. No Python runtime ships with the app.
+
+GitHub owner is tejas20; repository is https://github.com/tejas20/TokenFuel and must remain private until explicitly approved for publication.

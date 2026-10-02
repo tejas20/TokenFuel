@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "widget"
+description = "Local widget commands; remote provider webviews receive no permissions."
+commands.allow = ["read_config", "save_settings", "save_account", "remove_account", "set_manual", "open_provider", "refresh", "snap_window"]
