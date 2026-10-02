@@ -42,6 +42,9 @@ pub async fn fetch(app: &AppHandle, account: &Account) -> Result<Snapshot, Failu
         Connection::CodexCli if account.provider == Provider::Openai => codex(account).await,
         Connection::ClaudeCli if account.provider == Provider::Claude => claude(account).await,
         Connection::Browser => browser(app, account).await,
+        Connection::GeminiWeb if account.provider == Provider::Gemini => {
+            gemini_web(app, account).await
+        }
         _ => Err(Failure::new(
             Status::Unavailable,
             "This connection does not match the provider.",
@@ -206,7 +209,7 @@ pub async fn claude(account: &Account) -> Result<Snapshot, Failure> {
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|_| Failure::new(Status::Offline, "Usage client unavailable."))?;
-    let response = client
+    let mut response = client
         .get("https://api.anthropic.com/api/oauth/usage")
         .bearer_auth(token)
         .header("anthropic-beta", "oauth-2025-04-20")
@@ -255,15 +258,19 @@ pub async fn claude(account: &Account) -> Result<Snapshot, Failure> {
             "Unexpected Claude usage response size.",
         ));
     }
-    let bytes = response
-        .bytes()
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
         .await
-        .map_err(|_| Failure::new(Status::Offline, "Claude response was interrupted."))?;
-    if bytes.len() > 1_000_000 {
-        return Err(Failure::new(
-            Status::Unavailable,
-            "Unexpected Claude usage response size.",
-        ));
+        .map_err(|_| Failure::new(Status::Offline, "Claude response was interrupted."))?
+    {
+        if bytes.len() + chunk.len() > 1_000_000 {
+            return Err(Failure::new(
+                Status::Unavailable,
+                "Unexpected Claude usage response size.",
+            ));
+        }
+        bytes.extend_from_slice(&chunk);
     }
     let value: Value = serde_json::from_slice(&bytes).map_err(|_| {
         Failure::new(
@@ -328,7 +335,18 @@ async fn browser(app: &AppHandle, account: &Account) -> Result<Snapshot, Failure
         .map_err(|_| Failure::new(Status::Unavailable, "Could not decode the usage view."))?;
     let mut limits = vec![];
     if let Some(entries) = value.as_array() {
-        for (i, v) in entries.iter().take(12).enumerate() {
+        for v in entries.iter().take(12) {
+            if account.connection == Connection::GeminiWeb
+                && v.get("ageSeconds")
+                    .and_then(Value::as_i64)
+                    .filter(|age| (0..=604800).contains(age))
+                    .is_none()
+            {
+                return Err(Failure::new(
+                    Status::Unavailable,
+                    "Gemini did not expose a recognised freshness label. Use explicit capture until this layout is verified.",
+                ));
+            }
             let Some(p) = v.get("usedPercent").and_then(Value::as_f64) else {
                 continue;
             };
@@ -353,28 +371,100 @@ async fn browser(app: &AppHandle, account: &Account) -> Result<Snapshot, Failure
                 Provider::Openai => "ChatGPT",
                 _ => "Grok",
             };
-            if let Some(q) = tokenfuel_core::UsageLimit::percentage(
-                &format!("web:{i}:{name}"),
+            if let Some(mut q) = tokenfuel_core::UsageLimit::percentage(
+                &format!("web:{name}"),
                 name,
                 product,
                 "reported",
                 p,
                 tokenfuel_core::Source::Experimental,
             ) {
+                q.resets_at = v
+                    .get("resetsAt")
+                    .and_then(Value::as_str)
+                    .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+                    .map(|dt| dt.with_timezone(&Utc));
+                q.reset_label = v
+                    .get("resetLabel")
+                    .and_then(Value::as_str)
+                    .filter(|s| s.len() <= 80 && s.starts_with("Resets "))
+                    .map(str::to_owned);
+                if let Some(age) = v
+                    .get("ageSeconds")
+                    .and_then(Value::as_i64)
+                    .filter(|age| (0..=604800).contains(age))
+                {
+                    q.observed_at = Utc::now() - chrono::Duration::seconds(age);
+                }
                 limits.push(q);
             }
         }
     }
     let mut snapshot = Snapshot::ready(&account.id, account.provider, limits);
-    snapshot.message="Experimental visible Usage view capture. Reset times and totals are not inferred. Refresh the provider view to update its underlying counters.".into();
+    snapshot.message="Experimental visible Usage view capture, not automatic tracking. Refresh the provider view before capture. Only explicit machine-readable reset timestamps are retained; other resets and totals remain unknown.".into();
     Ok(snapshot)
+}
+
+/// Reload only the dedicated, quota-only Gemini route. Existing Browser connections stay explicit captures.
+async fn gemini_web(app: &AppHandle, account: &Account) -> Result<Snapshot, Failure> {
+    if !account.experimental {
+        return Err(Failure::new(
+            Status::Disconnected,
+            "Gemini live view requires experimental opt-in.",
+        ));
+    }
+    let label = format!("provider-{}", account.id);
+    let window = app.get_webview_window(&label).ok_or_else(|| {
+        Failure::new(
+            Status::LoginRequired,
+            "Open the isolated Gemini window and sign in to enable live Usage polling.",
+        )
+    })?;
+    let url = window
+        .url()
+        .map_err(|_| Failure::new(Status::Unavailable, "Gemini window unavailable."))?;
+    if url.host_str() != Some("gemini.google.com") {
+        return Err(Failure::new(
+            Status::LoginRequired,
+            "Complete Gemini sign-in before live polling.",
+        ));
+    }
+    let state = app.state::<crate::State>();
+    let before = *state
+        .provider_loads
+        .lock()
+        .unwrap()
+        .get(&label)
+        .unwrap_or(&0);
+    window
+        .navigate("https://gemini.google.com/usage".parse().unwrap())
+        .map_err(|_| Failure::new(Status::Offline, "Gemini Usage reload failed."))?;
+    tokio::time::timeout(Duration::from_secs(20),async {
+        loop {
+            let loaded=*state.provider_loads.lock().unwrap().get(&label).unwrap_or(&0)>before;
+            if loaded {
+                let current=window.url().map_err(|_|Failure::new(Status::Offline,"Gemini window closed."))?;
+                if current.host_str()!=Some("gemini.google.com") { return Err(Failure::new(Status::LoginRequired,"Gemini sign-in expired.")); }
+                if current.path()=="/usage" {
+                    let mut snapshot=browser(app,account).await?;
+                    if snapshot.status==Status::Available {
+                        let interval=state.config.lock().unwrap().settings.interval_secs;
+                        snapshot.mark_stale(Utc::now(),interval,false);
+                        snapshot.message="Experimental Gemini Usage page polling. Keep its isolated signed-in window open. Values are provider-reported; text-only reset labels are preserved without inferred timestamps.".into();
+                        return Ok(snapshot);
+                    }
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+    }).await.map_err(|_|Failure::new(Status::Offline,"Gemini Usage did not finish loading supported counters; cached readings are retained."))?
 }
 
 pub fn provider_url(provider: Provider) -> &'static str {
     match provider {
         Provider::Claude => "https://claude.ai/settings/usage",
         Provider::Openai => "https://chatgpt.com/",
-        Provider::Gemini => "https://gemini.google.com/app",
+        Provider::Gemini => "https://gemini.google.com/usage",
         Provider::Grok => "https://grok.com/",
     }
 }

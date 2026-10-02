@@ -8,6 +8,7 @@ pub enum Connection {
     CodexCli,
     ClaudeCli,
     Browser,
+    GeminiWeb,
     Manual,
 }
 

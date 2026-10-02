@@ -46,11 +46,22 @@ struct State {
     busy: AtomicBool,
     failures: Mutex<BTreeMap<String, u32>>,
     movement: AtomicU64,
+    provider_loads: Mutex<BTreeMap<String, u64>>,
 }
 #[tauri::command]
 fn read_config(window: tauri::WebviewWindow, state: tauri::State<State>) -> Result<Config, String> {
     local_ui(&window)?;
-    Ok(state.config.lock().unwrap().clone())
+    let mut config = state.config.lock().unwrap().clone();
+    for a in &config.accounts {
+        if let Some(snapshot) = config.cached.get_mut(&a.id) {
+            snapshot.mark_stale(
+                Utc::now(),
+                config.settings.interval_secs,
+                a.connection == Connection::Browser,
+            );
+        }
+    }
+    Ok(config)
 }
 #[tauri::command]
 fn save_settings(
@@ -277,6 +288,14 @@ fn open_provider(
             .join(&a.id),
     )
     .incognito(true)
+    .on_page_load(|window, payload| {
+        if payload.event() == tauri::webview::PageLoadEvent::Finished {
+            let state = window.state::<State>();
+            let mut loads = state.provider_loads.lock().unwrap();
+            let count = loads.entry(window.label().to_owned()).or_default();
+            *count = count.saturating_add(1);
+        }
+    })
     .on_navigation(move |url| providers::safe_navigation(url, p))
     .build()
     .map_err(|_| "Could not open isolated provider window.")?;
@@ -294,9 +313,28 @@ async fn poll(app: &tauri::AppHandle, force: bool) {
         return;
     }
     let c = state.config.lock().unwrap().clone();
+    let mut changed = false;
     for a in &c.accounts {
         let previous = c.cached.get(&a.id);
-        if a.enabled && previous.is_some_and(|s| s.retry_at.is_some_and(|t| t > Utc::now())) {
+        if !force
+            && previous.is_some()
+            && (!a.enabled || matches!(a.connection, Connection::Manual | Connection::Browser))
+        {
+            if let Some(s) = state.config.lock().unwrap().cached.get_mut(&a.id) {
+                changed |= s.mark_stale(
+                    Utc::now(),
+                    c.settings.interval_secs,
+                    a.connection == Connection::Browser,
+                );
+            }
+            continue;
+        }
+        if a.enabled
+            && previous.is_some_and(|s| {
+                (!force || s.status == Status::RateLimited)
+                    && s.retry_at.is_some_and(|t| t > Utc::now())
+            })
+        {
             continue;
         }
         if !force
@@ -346,12 +384,17 @@ async fn poll(app: &tauri::AppHandle, force: bool) {
             snapshot.fetched_at = snapshot.limits.first().map(|q| q.observed_at);
             snapshot.message = "Manual snapshot · not verified automatic tracking.".into();
         }
-        if snapshot
-            .fetched_at
-            .is_some_and(|t| (Utc::now() - t).num_hours() >= 24)
-            && !snapshot.limits.is_empty()
-        {
-            snapshot.status = Status::Stale;
+        snapshot.mark_stale(
+            Utc::now(),
+            c.settings.interval_secs,
+            a.connection == Connection::Browser,
+        );
+        // Commit and notify only if the account still matches this in-flight request.
+        let mut live = state.config.lock().unwrap();
+        if !live.accounts.iter().any(|account| {
+            account.id == a.id && account.revision == a.revision && account.enabled == a.enabled
+        }) {
+            continue;
         }
         if c.settings.alerts && snapshot.status == Status::Available {
             for q in &snapshot.limits {
@@ -380,7 +423,6 @@ async fn poll(app: &tauri::AppHandle, force: bool) {
                 }
             }
         }
-        let mut live = state.config.lock().unwrap();
         if live.accounts.iter().any(|account| {
             account.id == a.id
                 && account.provider == a.provider
@@ -389,9 +431,10 @@ async fn poll(app: &tauri::AppHandle, force: bool) {
                 && account.revision == a.revision
         }) {
             live.cached.insert(a.id.clone(), snapshot);
+            changed = true;
         }
     }
-    {
+    if changed {
         let live = state.config.lock().unwrap();
         let _ = config::write(&state.path, &live);
         let _ = app.emit("usage-updated", live.clone());
@@ -472,6 +515,7 @@ pub fn run() {
                 busy: AtomicBool::new(false),
                 failures: Mutex::new(BTreeMap::new()),
                 movement: AtomicU64::new(0),
+                provider_loads: Mutex::new(BTreeMap::new()),
             });
             use tauri::{
                 menu::{Menu, MenuItem},

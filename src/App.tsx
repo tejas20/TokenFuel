@@ -18,6 +18,7 @@ import { LogicalSize } from "@tauri-apps/api/dpi";
 import { listen } from "@tauri-apps/api/event";
 import { command, desktop, demo, initial } from "./bridge";
 import { countdown, percent } from "./format";
+import { displayStatus, selectLimit } from "./freshness";
 import type { Account, Config, Limit, Provider } from "./types";
 import "./style.css";
 const names = {
@@ -148,11 +149,15 @@ export default function App() {
       <section className="accounts" aria-label="Remaining allowances">
         {config.accounts.map((a) => {
           const snapshot = config.cached[a.id];
-          const q =
-            snapshot?.limits.find((q) => q.id === a.pinnedLimit) ||
-            snapshot?.limits[0];
+          const q = selectLimit(snapshot, a.pinnedLimit);
           const p = q?.remainingPercent ?? null;
-          const state = snapshot?.status || "disconnected";
+          const state = displayStatus(
+            snapshot,
+            q,
+            now,
+            config.settings.intervalSecs,
+            a.connection === "browser",
+          );
           const warning = p !== null && p < 20;
           return (
             <article
@@ -208,7 +213,11 @@ export default function App() {
                           ? "No reading"
                           : "remaining"}
                     </strong>
-                    <small>{countdown(q?.resetsAt ?? null, now)}</small>
+                    <small>
+                      {q?.resetsAt
+                        ? countdown(q.resetsAt, now)
+                        : q?.resetLabel || countdown(null, now)}
+                    </small>
                   </span>
                 </div>
               ) : (
@@ -233,7 +242,11 @@ export default function App() {
                           : percent(p)}{" "}
                       <span>{p !== null ? "remaining" : ""}</span>
                     </strong>
-                    <small>{countdown(q?.resetsAt ?? null, now)}</small>
+                    <small>
+                      {q?.resetsAt
+                        ? countdown(q.resetsAt, now)
+                        : q?.resetLabel || countdown(null, now)}
+                    </small>
                   </div>
                 </>
               )}
@@ -247,7 +260,12 @@ export default function App() {
                 ) : q?.source === "manual" ? (
                   "Manual snapshot"
                 ) : q?.source === "experimental" ? (
-                  "Experimental snapshot"
+                  a.connection === "geminiWeb" ||
+                  a.connection === "claudeCli" ? (
+                    "Experimental polling"
+                  ) : (
+                    "Experimental snapshot"
+                  )
                 ) : q ? (
                   "Documented source"
                 ) : (
@@ -272,6 +290,20 @@ export default function App() {
                   <span className="status">{state} · cached</span>
                 )}
               </div>
+              {q && (
+                <small className="reading-age">
+                  {q.source === "manual"
+                    ? "Manual"
+                    : a.connection === "browser"
+                      ? "Captured"
+                      : "Checked"}{" "}
+                  {Math.max(
+                    0,
+                    Math.floor((now - Date.parse(q.observedAt)) / 60000),
+                  )}
+                  m ago
+                </small>
+              )}
             </article>
           );
         })}
@@ -414,8 +446,8 @@ export default function App() {
           </div>
           <p className="hint">
             Connections stay on this device. Browser sign-in windows are
-            isolated and session-only. Experimental browser readings require
-            explicit capture.
+            isolated and session-only. Gemini live view reloads its Usage page;
+            the capture source requires explicit refresh.
           </p>
           {config.accounts.map((a) => (
             <AccountEditor key={a.id} account={a} run={run} />
@@ -438,8 +470,8 @@ export default function App() {
           </button>
           <small className="hint">
             Grok is planned next. Claude Enterprise monthly limits require
-            office verification. Ordinary ChatGPT counters and Gemini automatic
-            tracking remain unverified.
+            office verification. Ordinary ChatGPT counters remain unsupported;
+            Gemini live polling needs isolated-window verification.
           </small>
         </section>
       )}
@@ -542,6 +574,11 @@ function AccountEditor({
           {draft.provider === "claude" && (
             <option value="claudeCli">Claude Code · experimental</option>
           )}
+          {draft.provider === "gemini" && (
+            <option value="geminiWeb">
+              Gemini live Usage view · experimental
+            </option>
+          )}
           <option value="browser">Usage view · experimental capture</option>
           <option value="manual">Manual snapshot</option>
         </select>
@@ -559,6 +596,7 @@ function AccountEditor({
           </label>
         )}
         {(draft.connection === "browser" ||
+          draft.connection === "geminiWeb" ||
           draft.connection === "claudeCli") && (
           <label>
             <input
@@ -581,7 +619,7 @@ function AccountEditor({
           Save
         </button>
       </div>
-      {draft.connection === "browser" && (
+      {(draft.connection === "browser" || draft.connection === "geminiWeb") && (
         <button onClick={() => run("open_provider", { id: a.id })}>
           Open isolated sign-in / Usage view
         </button>

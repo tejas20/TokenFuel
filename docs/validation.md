@@ -2,17 +2,14 @@
 
 2026-10-02, Windows x64. This is a testable development preview, not certification of every provider or plan.
 
-- Rust workspace tests: quota decimal arithmetic, overages, zero/unknown denominators, changed payloads, enterprise monthly-only payloads, scoped pools, stable pin identities, currency mismatches, retry backoff and hostile Retry-After values; provider-window navigation boundaries.
-- Rust formatting and Clippy with warnings denied.
-- TypeScript strict checking, Vite production build and frontend reset/countdown test.
-- Browser-rendered bar/ring switching, low-remaining labels, settings, light/opaque appearance, quota expansion and pin state. Final fresh preview console contained no errors or warnings.
-- Windows NSIS and portable executable compiled successfully. Native window/tray behaviour still requires device interaction checks; browser testing does not verify these.
-- Packaged executable process-start smoke passed with all accounts disconnected; the process was stopped after the check. This does not verify native interactions.
-- Private GitHub owner and visibility verified via authenticated GitHub CLI. Source pushed to main; installer, portable ZIP and SHA-256 checksums uploaded to a private draft prerelease. Hosted Windows CI was still running at handoff.
+- 15 Rust tests pass: decimal arithmetic/overages, unknown denominators, changed payloads, monthly-only enterprise shapes, stable scoped pools, currency mismatch, freshness/expired resets, retry scheduling, navigation restrictions.
+- 10 frontend/DOM regression tests pass: countdown, per-quota staleness, missing pinned pools, observed Gemini markup, used/remaining direction, duplicate/hidden/ambiguous counters and explicit reset/freshness labels.
+- Rust formatting and Clippy with warnings denied; strict TypeScript/Vite production build pass.
+- Bar/ring previews and settings verified in the browser; this does not certify native tray, startup, monitor/DPI or alert interactions.
+- Codex installed app-server live quota reads succeeded, with separate five-hour/weekly windows. These counters belong to Codex.
+- Exact shipped Gemini extraction matched the signed-in PRO Usage page, including a page reload, provider freshness and displayed reset labels. Native isolated-window Gemini live polling remains unverified.
+- Private GitHub owner/visibility verified; two previous hosted Windows validation runs passed. Reviewed source and refreshed private release artifacts are delivered together.
 
-Live local Codex testing awaits the user's explicit session-access consent. The diagnostic asks for `--consent-local-session` before any read. Run `cargo run -p tokenfuel --bin tokenfuel-diagnose -- --consent-local-session` only after consenting. It returns quota numbers and reset timestamps, never credentials or account identity.
+Claude Enterprise verification remains on the office laptop checklist. Ordinary ChatGPT model counters remain unsupported; the presence of the ChatGPT app does not expose a supported quota source to TokenFuel. Sign-ins in the development browser are not shared with the widget. No credentials or conversations were exported during these checks.
 
-Gemini and Claude signed-in usage captures remain unverified; no authenticated provider view was available in the browser used for development. Claude Enterprise monthly verification requires the office laptop. Physical scaling, monitor placement, alerts, startup, provider session expiry and real HTTP rate limiting remain on the office test checklist. Synthetic parser tests are not substitutes for these live checks.
-
-See `design-qa.md` for visual comparison evidence and `office-validation.md` for the remaining device/account checks. Release binaries are unsigned development builds; signing belongs to the public-release process.
-
+See `review-2026-10-02.md` for the review findings and `office-validation.md` for remaining device/account checks. Release binaries are unsigned development builds.

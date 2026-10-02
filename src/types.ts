@@ -7,6 +7,7 @@ export interface Limit {
   unit: string;
   period: string;
   resetsAt: string | null;
+  resetLabel?: string | null;
   used: string | null;
   total: string | null;
   remaining: string | null;
@@ -35,7 +36,7 @@ export interface Account {
   provider: Provider;
   label: string;
   workspace: string;
-  connection: "codexCli" | "claudeCli" | "browser" | "manual";
+  connection: "codexCli" | "claudeCli" | "browser" | "geminiWeb" | "manual";
   enabled: boolean;
   experimental: boolean;
   pinnedLimit: string | null;

@@ -2,19 +2,34 @@
 
 A Windows desktop widget for remaining AI subscription allowances. Private development preview; MIT licensed. The selected soft-glass dock has horizontal bars and circular gauges, separate account/workspace pools, quota pinning, tray controls, remembered position, optional startup and threshold alerts.
 
+## Start in one command
+
+For users with access to this **private repository**, install Git and [GitHub CLI](https://cli.github.com/) once and sign in with `gh auth login`. Then run this in PowerShell:
+
+```powershell
+gh repo clone tejas20/TokenFuel; .\TokenFuel\Start-TokenFuel.cmd
+```
+
+If you already have this checkout, run `.\Start-TokenFuel.cmd`. The launcher downloads the prebuilt app, checks its SHA-256 checksum and caches it under `%LOCALAPPDATA%\TokenFuel\Preview`. It needs **no Rust, Node, pnpm or Python**, and does not enable provider connections or Windows startup. The wrapper applies its execution setting only to that PowerShell process; it does not change machine policy. Windows 10/11 x64 and WebView2 are required. If WebView2 is missing, use the installer below, which can bootstrap it.
+
+Prefer clicking? Download the **installer** or **portable ZIP** from the [private preview release](https://github.com/tejas20/TokenFuel/releases). Run the installer, or extract the ZIP and double-click `TokenFuel.exe`. No Git or GitHub CLI is needed after downloading these files. The binaries are unsigned development builds.
+
+First run: open Settings, choose a source, allow that connection, and Save. OpenAI defaults to the installed Codex session; it tracks **Codex pools**, not all ChatGPT chat models. For Gemini, choose **Gemini live Usage view · experimental**, enable the two consent controls, Save, then open the isolated window and sign in. Keep that window open; polling reloads only `/usage` every two minutes and checks the provider's freshness label. Click Refresh after signing in. The separate **Usage view · experimental capture** source is an explicit snapshot, **not automatic tracking**. Refresh the provider view before capturing; unsupported or ambiguous counters stay unavailable. Reading ages and stale labels stay visible.
+
 ## Provider support
 
 | Provider | Connection | Current validation |
 |---|---|---|
-| OpenAI | Installed Codex app-server, documented `account/rateLimits/read` | Adapter implemented; live verification pending consent |
+| OpenAI | Installed Codex app-server, documented `account/rateLimits/read` | Live quota read succeeded on this PC; ordinary ChatGPT counters remain unsupported |
 | Claude | Experimental Claude Code OAuth usage endpoint | Synthetic payload tests include personal windows and member monthly monetary limits; live office verification outstanding |
+| Gemini | Experimental live Usage WebView polling | Quota-only DOM parser matched this PC's signed-in PRO Usage page; native isolated-window polling still needs verification |
 | Claude / Gemini / ChatGPT | Isolated, session-only sign-in window; explicit visible Usage capture | Experimental, conservative DOM parser; signed-in provider validation outstanding |
 | All supported providers | Manual percentage / decimal budget / unlimited snapshots | Clearly manual; never verified automatic tracking |
 | Grok | Planned adapter | Not enabled |
 
 Codex counters are labelled Codex. They do not represent every ordinary ChatGPT model. Browser capture does not reload a provider page or infer reset dates, window limits, or currency. Refresh the provider's Usage view before capturing. Google or enterprise SSO may reject embedded sign-in; use manual snapshots if that happens. Enterprise monthly support remains provisional until compared on the office laptop.
 
-## Run and build
+## Develop from source
 
 Windows 10/11 x64, WebView2, Git, Node.js 24+, pnpm 11.19.0, Rust 1.99.0 MSVC, Visual Studio 2022 C++ build tools and Windows SDK.
 

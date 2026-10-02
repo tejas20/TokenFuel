@@ -41,6 +41,9 @@ pub struct UsageLimit {
     pub unit: String,
     pub period: String,
     pub resets_at: Option<DateTime<Utc>>,
+    /// Provider-displayed reset text when an absolute timestamp is not exposed.
+    #[serde(default)]
+    pub reset_label: Option<String>,
     /// Decimal strings preserve monetary precision across Rust/JavaScript.
     pub used: Option<String>,
     pub total: Option<String>,
@@ -71,6 +74,7 @@ impl UsageLimit {
             unit: "percent".into(),
             period: period.into(),
             resets_at: None,
+            reset_label: None,
             used: None,
             total: None,
             remaining: None,
@@ -112,6 +116,7 @@ impl UsageLimit {
             unit: unit.into(),
             period: period.into(),
             resets_at: None,
+            reset_label: None,
             used: Some(used.normalize().to_string()),
             total: total.map(|x| x.normalize().to_string()),
             remaining: remaining.map(|x| x.normalize().to_string()),
@@ -146,6 +151,30 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
+    /// Keep cached values, but never describe an expired or aged reading as current.
+    pub fn mark_stale(&mut self, now: DateTime<Utc>, interval_secs: u64, captured: bool) -> bool {
+        if self.status != Status::Available {
+            return false;
+        }
+        let aged = self.limits.iter().any(|q| {
+            let age = (now - q.observed_at).num_seconds();
+            let max_age = if q.source == Source::Manual {
+                86400
+            } else if captured {
+                600
+            } else {
+                interval_secs
+                    .saturating_mul(2)
+                    .max(300)
+                    .min(i64::MAX as u64) as i64
+            };
+            age < -60 || age >= max_age || q.resets_at.is_some_and(|reset| reset <= now)
+        });
+        if aged {
+            self.status = Status::Stale;
+        }
+        aged
+    }
     pub fn empty(
         account_id: &str,
         provider: Provider,
@@ -192,6 +221,42 @@ mod tests {
     use std::str::FromStr;
     fn d(s: &str) -> Decimal {
         Decimal::from_str(s).unwrap()
+    }
+    #[test]
+    fn cache_freshness_preserves_values_and_connection_errors() {
+        let now = Utc::now();
+        let mut q =
+            UsageLimit::percentage("x", "Weekly", "Codex", "weekly", 13.0, Source::Documented)
+                .unwrap();
+        q.observed_at = now - chrono::Duration::seconds(300);
+        let mut s = Snapshot::ready("x", Provider::Openai, vec![q]);
+        assert!(s.mark_stale(now, 120, false));
+        assert_eq!(s.status, Status::Stale);
+        assert_eq!(s.limits[0].remaining_percent, Some(87.0));
+        s.status = Status::Offline;
+        assert!(!s.mark_stale(now, 120, false));
+        assert_eq!(s.status, Status::Offline);
+    }
+    #[test]
+    fn captured_and_manual_readings_expire_without_assuming_a_reset() {
+        let now = Utc::now();
+        let mut q = UsageLimit::percentage(
+            "x",
+            "Weekly",
+            "Gemini",
+            "weekly",
+            20.0,
+            Source::Experimental,
+        )
+        .unwrap();
+        q.observed_at = now - chrono::Duration::seconds(600);
+        let mut s = Snapshot::ready("x", Provider::Gemini, vec![q]);
+        assert!(s.mark_stale(now, 120, true));
+        s.status = Status::Available;
+        s.limits[0].source = Source::Manual;
+        assert!(!s.mark_stale(now, 120, false));
+        s.limits[0].resets_at = Some(now);
+        assert!(s.mark_stale(now, 120, false));
     }
     #[test]
     fn monthly_money_is_exact_and_overages_are_preserved() {

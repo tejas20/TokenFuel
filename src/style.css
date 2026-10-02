@@ -714,3 +714,4 @@ footer {
   background: var(--track);
   border-radius: 6px;
 }
+.reading-age { display: block; margin-top: 5px; font-size: 10px; color: var(--muted); }
