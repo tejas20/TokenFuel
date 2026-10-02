@@ -1,7 +1,7 @@
-use std::time::Duration;
 use chrono::{DateTime, Utc};
 use reqwest::header::HeaderMap;
 use reqwest::{Client, Response, StatusCode};
+use std::time::Duration;
 use tokenfuel_core::Status;
 
 pub struct Failure {
@@ -28,9 +28,18 @@ pub fn create_client() -> Result<Client, Failure> {
         .map_err(|_| Failure::new(Status::Offline, "Usage HTTP client unavailable."))
 }
 
-pub async fn read_bounded_bytes(mut response: Response, max_bytes: usize) -> Result<Vec<u8>, Failure> {
-    if response.content_length().is_some_and(|n| n > max_bytes as u64) {
-        return Err(Failure::new(Status::Unavailable, "Unexpected response size."));
+pub async fn read_bounded_bytes(
+    mut response: Response,
+    max_bytes: usize,
+) -> Result<Vec<u8>, Failure> {
+    if response
+        .content_length()
+        .is_some_and(|n| n > max_bytes as u64)
+    {
+        return Err(Failure::new(
+            Status::Unavailable,
+            "Unexpected response size.",
+        ));
     }
     let mut bytes = Vec::new();
     while let Some(chunk) = response
@@ -39,7 +48,10 @@ pub async fn read_bounded_bytes(mut response: Response, max_bytes: usize) -> Res
         .map_err(|_| Failure::new(Status::Offline, "Response was interrupted."))?
     {
         if bytes.len() + chunk.len() > max_bytes {
-            return Err(Failure::new(Status::Unavailable, "Unexpected response size."));
+            return Err(Failure::new(
+                Status::Unavailable,
+                "Unexpected response size.",
+            ));
         }
         bytes.extend_from_slice(&chunk);
     }
@@ -66,7 +78,9 @@ pub fn handle_http_status(
     if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
         return Err(Failure::new(
             Status::LoginRequired,
-            format!("{service_name} rejected session credentials. Re-authenticate or update settings."),
+            format!(
+                "{service_name} rejected session credentials. Re-authenticate or update settings."
+            ),
         ));
     }
     if status == StatusCode::TOO_MANY_REQUESTS {

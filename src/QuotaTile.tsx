@@ -118,7 +118,7 @@ function QuotaWindow({
       : balance
         ? balance
         : spending
-          ? `${spending} (uncapped)`
+          ? `${spending} (limit not reported)`
           : "Limit not reported";
   const label = q ? quotaLabel(q) : "Allowance";
   const caption =
@@ -170,7 +170,7 @@ function QuotaWindow({
         <span className="tile-amount">{balance}</span>
       )}
       {!q?.unlimited && !balance && spending && (
-        <span className="tile-amount">{spending} (uncapped)</span>
+        <span className="tile-amount">{spending} (limit not reported)</span>
       )}
       {q?.unlimited && <span className="tile-amount">Unlimited</span>}
       <span

@@ -129,12 +129,18 @@ pub fn decode_secret(bytes: &[u8]) -> Option<String> {
         && bytes.iter().skip(1).step_by(2).all(|byte| *byte == 0)
     {
         let units = bytes
-            .as_chunks::<2>().0.iter()
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
             .collect::<Vec<_>>();
-        return String::from_utf16(&units).ok().map(|s| s.trim_matches('\0').to_string());
+        return String::from_utf16(&units)
+            .ok()
+            .map(|s| s.trim_matches('\0').to_string());
     }
-    String::from_utf8(bytes.to_vec()).ok().map(|s| s.trim_matches('\0').to_string())
+    String::from_utf8(bytes.to_vec())
+        .ok()
+        .map(|s| s.trim_matches('\0').to_string())
 }
 
 #[cfg(windows)]
@@ -183,7 +189,10 @@ mod tests {
 
     #[test]
     fn secrets_decode_from_utf8_and_utf16() {
-        assert_eq!(decode_secret(b"gho_test_token").as_deref(), Some("gho_test_token"));
+        assert_eq!(
+            decode_secret(b"gho_test_token").as_deref(),
+            Some("gho_test_token")
+        );
         let utf16: Vec<u8> = "gho_test_token"
             .encode_utf16()
             .flat_map(|u| u.to_le_bytes())

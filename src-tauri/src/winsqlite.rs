@@ -1,4 +1,4 @@
-use std::ffi::{c_char, c_int, c_uchar, CStr, CString};
+use std::ffi::{CStr, CString, c_char, c_int, c_uchar};
 use std::path::Path;
 use std::ptr;
 
@@ -111,7 +111,9 @@ impl Connection {
         };
         if rc != SQLITE_OK || raw.is_null() {
             if !raw.is_null() {
-                unsafe { sqlite3_close(raw); }
+                unsafe {
+                    sqlite3_close(raw);
+                }
             }
             return Err(format!("Could not open SQLite database (code {rc})"));
         }
@@ -135,7 +137,9 @@ impl Connection {
         };
         if rc != SQLITE_OK || raw.is_null() {
             if !raw.is_null() {
-                unsafe { sqlite3_close(raw); }
+                unsafe {
+                    sqlite3_close(raw);
+                }
             }
             return Err("Could not open in-memory SQLite database.".into());
         }
@@ -145,16 +149,17 @@ impl Connection {
     #[cfg(windows)]
     fn backup_from(&self, source: &Connection) -> Result<(), String> {
         let main = CString::new("main").unwrap();
-        let backup = unsafe {
-            sqlite3_backup_init(self.raw, main.as_ptr(), source.raw, main.as_ptr())
-        };
+        let backup =
+            unsafe { sqlite3_backup_init(self.raw, main.as_ptr(), source.raw, main.as_ptr()) };
         if backup.is_null() {
             return Err("SQLite backup_init failed.".into());
         }
         let rc = unsafe { sqlite3_backup_step(backup, -1) };
         let finish_rc = unsafe { sqlite3_backup_finish(backup) };
         if rc != SQLITE_DONE && rc != SQLITE_OK {
-            return Err(format!("SQLite backup_step failed (code {rc}, finish {finish_rc})"));
+            return Err(format!(
+                "SQLite backup_step failed (code {rc}, finish {finish_rc})"
+            ));
         }
         Ok(())
     }
@@ -163,18 +168,13 @@ impl Connection {
     fn prepare(&self, sql: &str) -> Result<Statement, String> {
         let c_sql = CString::new(sql).map_err(|_| "SQL contains null byte.")?;
         let mut raw = ptr::null_mut();
-        let rc = unsafe {
-            sqlite3_prepare_v2(
-                self.raw,
-                c_sql.as_ptr(),
-                -1,
-                &mut raw,
-                ptr::null_mut(),
-            )
-        };
+        let rc =
+            unsafe { sqlite3_prepare_v2(self.raw, c_sql.as_ptr(), -1, &mut raw, ptr::null_mut()) };
         if rc != SQLITE_OK || raw.is_null() {
             let msg = unsafe {
-                CStr::from_ptr(sqlite3_errmsg(self.raw)).to_string_lossy().to_string()
+                CStr::from_ptr(sqlite3_errmsg(self.raw))
+                    .to_string_lossy()
+                    .to_string()
             };
             return Err(format!("SQLite prepare error: {msg}"));
         }
@@ -204,7 +204,11 @@ pub fn query_optional_text(path: &Path, sql: &str, param: &str) -> Result<Option
 }
 
 #[cfg(not(windows))]
-pub fn query_optional_text(_path: &Path, _sql: &str, _param: &str) -> Result<Option<String>, String> {
+pub fn query_optional_text(
+    _path: &Path,
+    _sql: &str,
+    _param: &str,
+) -> Result<Option<String>, String> {
     Err("winsqlite is supported only on Windows.".into())
 }
 

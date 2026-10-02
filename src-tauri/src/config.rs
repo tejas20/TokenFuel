@@ -19,6 +19,59 @@ pub enum Connection {
     Unknown,
 }
 
+impl Connection {
+    pub fn requires_experimental_opt_in(self) -> bool {
+        matches!(
+            self,
+            Self::ClaudeCli
+                | Self::Browser
+                | Self::GeminiWeb
+                | Self::OpencodeGo
+                | Self::CursorLocal
+                | Self::GrokCli
+                | Self::AntigravityLocal
+        )
+    }
+
+    pub fn supports_custom_secret(self) -> bool {
+        matches!(
+            self,
+            Self::OpencodeGo
+                | Self::CursorLocal
+                | Self::GrokCli
+                | Self::CopilotCli
+                | Self::AntigravityLocal
+        )
+    }
+}
+
+#[cfg(test)]
+mod connection_tests {
+    use super::Connection;
+
+    #[test]
+    fn experimental_connections_require_separate_consent() {
+        for connection in [
+            Connection::ClaudeCli,
+            Connection::Browser,
+            Connection::GeminiWeb,
+            Connection::OpencodeGo,
+            Connection::CursorLocal,
+            Connection::GrokCli,
+            Connection::AntigravityLocal,
+        ] {
+            assert!(connection.requires_experimental_opt_in());
+        }
+        for connection in [
+            Connection::CodexCli,
+            Connection::CopilotCli,
+            Connection::Manual,
+        ] {
+            assert!(!connection.requires_experimental_opt_in());
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Account {

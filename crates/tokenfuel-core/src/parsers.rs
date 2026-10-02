@@ -281,18 +281,39 @@ pub fn opencode(value: &Value) -> Vec<UsageLimit> {
     let ends_at = timestamp(access.get("endsAt").or_else(|| access.get("ends_at")));
 
     let specs: [(&[&str], &str, &str, &str); 3] = [
-        (&["fiveHour", "five_hour"], "opencode:five_hour", "5 hours", "rolling"),
+        (
+            &["fiveHour", "five_hour"],
+            "opencode:five_hour",
+            "5 hours",
+            "rolling",
+        ),
         (&["week", "weekly"], "opencode:weekly", "Weekly", "weekly"),
-        (&["month", "monthly"], "opencode:monthly", "Monthly", "monthly"),
+        (
+            &["month", "monthly"],
+            "opencode:monthly",
+            "Monthly",
+            "monthly",
+        ),
     ];
 
     for (keys, id, name, period) in specs {
-        let meter_obj = keys.iter().find_map(|k| meters.get(*k)).and_then(Value::as_object);
+        let meter_obj = keys
+            .iter()
+            .find_map(|k| meters.get(*k))
+            .and_then(Value::as_object);
         let Some(meter) = meter_obj else {
             continue;
         };
-        let used_dec = decimal(meter.get("usedMicroCents").or_else(|| meter.get("used_micro_cents")));
-        let limit_dec = decimal(meter.get("limitMicroCents").or_else(|| meter.get("limit_micro_cents")));
+        let used_dec = decimal(
+            meter
+                .get("usedMicroCents")
+                .or_else(|| meter.get("used_micro_cents")),
+        );
+        let limit_dec = decimal(
+            meter
+                .get("limitMicroCents")
+                .or_else(|| meter.get("limit_micro_cents")),
+        );
 
         if let Some(used_raw) = used_dec {
             let used = used_raw / microcents_divisor;
@@ -448,9 +469,17 @@ pub fn grok(value: &Value) -> Vec<UsageLimit> {
     }
 
     // 2. On-demand usage / spending
-    let on_demand_used = grok_cents(config.get("onDemandUsed").or_else(|| config.get("on_demand_used")));
+    let on_demand_used = grok_cents(
+        config
+            .get("onDemandUsed")
+            .or_else(|| config.get("on_demand_used")),
+    );
     if let Some(used) = on_demand_used {
-        let total = grok_cents(config.get("onDemandCap").or_else(|| config.get("on_demand_cap")));
+        let total = grok_cents(
+            config
+                .get("onDemandCap")
+                .or_else(|| config.get("on_demand_cap")),
+        );
         if let Ok(mut q) = UsageLimit::amounts(
             "grok:on_demand",
             "On-demand spending",
@@ -467,8 +496,11 @@ pub fn grok(value: &Value) -> Vec<UsageLimit> {
     }
 
     // 3. Prepaid balance
-    if let Some(balance) = grok_cents(config.get("prepaidBalance").or_else(|| config.get("prepaid_balance")))
-        && balance > Decimal::ZERO
+    if let Some(balance) = grok_cents(
+        config
+            .get("prepaidBalance")
+            .or_else(|| config.get("prepaid_balance")),
+    ) && balance > Decimal::ZERO
         && let Ok(mut q) = UsageLimit::amounts(
             "grok:prepaid_balance",
             "Prepaid balance",
@@ -519,7 +551,10 @@ pub fn copilot(value: &Value) -> Vec<UsageLimit> {
                 "completions" => "completions",
                 _ => "requests",
             };
-            let unlimited = snap.get("unlimited").and_then(Value::as_bool).unwrap_or(false)
+            let unlimited = snap
+                .get("unlimited")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
                 || snap.get("entitlement").and_then(Value::as_i64) == Some(-1);
 
             if unlimited {
@@ -596,7 +631,9 @@ pub fn copilot(value: &Value) -> Vec<UsageLimit> {
                 _ => "requests",
             };
             let rem = decimal(Some(rem_val));
-            let total = monthly.and_then(|m| m.get(key)).and_then(|v| decimal(Some(v)));
+            let total = monthly
+                .and_then(|m| m.get(key))
+                .and_then(|v| decimal(Some(v)));
 
             if let (Some(rem), Some(tot)) = (rem, total) {
                 let used = (tot - rem).max(Decimal::ZERO);
@@ -703,11 +740,8 @@ pub fn antigravity(value: &Value) -> Vec<UsageLimit> {
                         )
                     {
                         q.remaining_percent = Some((rf.clamp(0.0, 1.0) * 100.0).clamp(0.0, 100.0));
-                        q.resets_at = timestamp(
-                            bucket
-                                .get("resetTime")
-                                .or_else(|| bucket.get("reset_time")),
-                        );
+                        q.resets_at =
+                            timestamp(bucket.get("resetTime").or_else(|| bucket.get("reset_time")));
                         out.push(q);
                     }
                 }
@@ -734,11 +768,12 @@ pub fn antigravity(value: &Value) -> Vec<UsageLimit> {
                     continue;
                 }
 
-                let quota_info = info
-                    .get("quotaInfo")
-                    .or_else(|| info.get("quota_info"));
+                let quota_info = info.get("quotaInfo").or_else(|| info.get("quota_info"));
                 let remaining_fraction = quota_info
-                    .and_then(|q| q.get("remainingFraction").or_else(|| q.get("remaining_fraction")))
+                    .and_then(|q| {
+                        q.get("remainingFraction")
+                            .or_else(|| q.get("remaining_fraction"))
+                    })
                     .and_then(Value::as_f64);
 
                 if let Some(rf) = remaining_fraction {
@@ -977,7 +1012,10 @@ mod tests {
         assert_eq!(prepaid.remaining_percent, None);
 
         // Product breakdowns (Build, Chat, API) must not become separate depleting meters
-        assert!(q.iter().all(|x| x.name != "Build" && x.name != "Chat" && x.name != "API"));
+        assert!(
+            q.iter()
+                .all(|x| x.name != "Build" && x.name != "Chat" && x.name != "API")
+        );
     }
 
     #[test]
@@ -988,7 +1026,10 @@ mod tests {
         assert_eq!(q.len(), 3);
 
         // Premium interactions: entitlement 300, remaining 210, percent 70%
-        let premium = q.iter().find(|x| x.id == "copilot:premium_interactions").unwrap();
+        let premium = q
+            .iter()
+            .find(|x| x.id == "copilot:premium_interactions")
+            .unwrap();
         assert_eq!(premium.name, "Premium requests");
         assert_eq!(premium.used.as_deref(), Some("90"));
         assert_eq!(premium.total.as_deref(), Some("300"));
@@ -1035,7 +1076,10 @@ mod tests {
             "2026-10-02T20:15:00+00:00"
         );
 
-        let weekly = q.iter().find(|x| x.id == "antigravity:gemini-weekly").unwrap();
+        let weekly = q
+            .iter()
+            .find(|x| x.id == "antigravity:gemini-weekly")
+            .unwrap();
         assert_eq!(weekly.name, "Weekly Quota");
         assert_eq!(weekly.period, "weekly");
         assert_eq!(weekly.remaining_percent, Some(60.0));

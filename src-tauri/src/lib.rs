@@ -106,6 +106,57 @@ fn is_local_session(conn: &Connection) -> bool {
     )
 }
 
+fn uses_local_session(account: &Account) -> bool {
+    is_local_session(&account.connection)
+        && !(account.has_custom_secret && account.connection.supports_custom_secret())
+}
+
+fn saved_secret_flag(account: &Account, existing: Option<&Account>) -> bool {
+    account.enabled && existing.is_some_and(|old| old.has_custom_secret)
+}
+
+#[cfg(test)]
+mod account_secret_tests {
+    use super::*;
+
+    #[test]
+    fn disconnect_and_ui_payload_cannot_restore_a_secret_flag() {
+        let mut account = config::Config::default().accounts.remove(0);
+        account.has_custom_secret = true;
+        let old = account.clone();
+        account.enabled = false;
+        assert!(!saved_secret_flag(&account, Some(&old)));
+        account.enabled = true;
+        assert!(saved_secret_flag(&account, Some(&old)));
+        assert!(!saved_secret_flag(&account, None));
+        let mut cleared = old.clone();
+        cleared.has_custom_secret = false;
+        assert!(!saved_secret_flag(&account, Some(&cleared)));
+    }
+
+    #[test]
+    fn secrets_do_not_exempt_cli_connections_that_ignore_them() {
+        let mut account = config::Config::default().accounts.remove(0);
+        account.has_custom_secret = true;
+        for connection in [Connection::CodexCli, Connection::ClaudeCli] {
+            account.connection = connection;
+            assert!(uses_local_session(&account));
+        }
+        for connection in [
+            Connection::CursorLocal,
+            Connection::GrokCli,
+            Connection::CopilotCli,
+            Connection::AntigravityLocal,
+        ] {
+            account.connection = connection;
+            assert!(!uses_local_session(&account));
+            account.has_custom_secret = false;
+            assert!(uses_local_session(&account));
+            account.has_custom_secret = true;
+        }
+    }
+}
+
 #[tauri::command]
 fn save_account(
     window: tauri::WebviewWindow,
@@ -118,19 +169,28 @@ fn save_account(
         return Err("Account label is too long.".into());
     }
     let mut c = state.config.lock().unwrap();
-    if account.enabled && is_local_session(&account.connection) && !account.has_custom_secret
+    // Secret metadata comes from native storage commands, never the UI payload.
+    account.has_custom_secret =
+        saved_secret_flag(&account, c.accounts.iter().find(|a| a.id == account.id));
+    if account.enabled
+        && uses_local_session(&account)
         && c.accounts.iter().any(|a| {
             a.id != account.id
                 && a.enabled
                 && a.provider == account.provider
-                && is_local_session(&a.connection)
-                && !a.has_custom_secret
-        }) {
-            return Err(format!(
-                "{} uses the current local sign-in. Disconnect the existing automatic account or configure an account-specific token/cookie first.",
-                account.provider.display_name()
-            ));
-        }
+                && uses_local_session(a)
+        })
+    {
+        let remedy = if account.connection.supports_custom_secret() {
+            "Disconnect the existing automatic account or configure an account-specific token/cookie first."
+        } else {
+            "Disconnect the existing automatic account first; this connection cannot use account-specific tokens."
+        };
+        return Err(format!(
+            "{} uses the current local sign-in. {remedy}",
+            account.provider.display_name(),
+        ));
+    }
     let clear = c
         .accounts
         .iter()
@@ -153,7 +213,6 @@ fn save_account(
     if let Some(old) = c.accounts.iter_mut().find(|a| a.id == account.id) {
         account.revision = old.revision.saturating_add(1);
         account.manual_limits = old.manual_limits.clone();
-        account.has_custom_secret = old.has_custom_secret;
         *old = account;
     } else {
         account.id = uuid::Uuid::new_v4().to_string();
@@ -194,6 +253,12 @@ fn save_account_secret(
         .iter_mut()
         .find(|a| a.id == id)
         .ok_or("Account missing.")?;
+    if !a.connection.supports_custom_secret() {
+        return Err(
+            "This connection uses its local sign-in and does not support account-specific secrets."
+                .into(),
+        );
+    }
     credentials::save_account_secret(&id, &secret)?;
     a.has_custom_secret = true;
     a.revision = a.revision.saturating_add(1);
@@ -445,9 +510,9 @@ async fn poll(app: &tauri::AppHandle, force: bool) {
                     let mut f = state.failures.lock().unwrap();
                     let failures = f.entry(a.id.clone()).or_default();
                     *failures = failures.saturating_add(1);
-                    let mut s = previous
-                        .cloned()
-                        .unwrap_or_else(|| Snapshot::empty(&a.id, a.provider, e.status, &e.message));
+                    let mut s = previous.cloned().unwrap_or_else(|| {
+                        Snapshot::empty(&a.id, a.provider, e.status, &e.message)
+                    });
                     s.status = e.status;
                     s.message = e.message;
                     s.retry_at = Some(tokenfuel_core::scheduler::next_attempt(

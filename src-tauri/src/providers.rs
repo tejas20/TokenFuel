@@ -43,6 +43,12 @@ pub async fn fetch(app: &AppHandle, account: &Account) -> Result<Snapshot, Failu
             "Connect this account to start tracking.",
         ));
     }
+    if account.connection.requires_experimental_opt_in() && !account.experimental {
+        return Err(Failure::new(
+            Status::Disconnected,
+            "Enable experimental opt-in before connecting this usage source.",
+        ));
+    }
     match account.connection {
         Connection::Manual => Ok(Snapshot::ready(
             &account.id,
@@ -51,9 +57,7 @@ pub async fn fetch(app: &AppHandle, account: &Account) -> Result<Snapshot, Failu
         )),
         Connection::CodexCli if account.provider == Provider::Openai => codex(account).await,
         Connection::ClaudeCli if account.provider == Provider::Claude => claude(account).await,
-        Connection::OpencodeGo if account.provider == Provider::Opencode => {
-            opencode(account).await
-        }
+        Connection::OpencodeGo if account.provider == Provider::Opencode => opencode(account).await,
         Connection::CursorLocal if account.provider == Provider::Cursor => cursor(account).await,
         Connection::GrokCli if account.provider == Provider::Grok => grok(account).await,
         Connection::CopilotCli if account.provider == Provider::Copilot => copilot(account).await,
@@ -307,38 +311,41 @@ pub async fn opencode(account: &Account) -> Result<Snapshot, Failure> {
     let mut auth_cookie = String::new();
 
     if account.has_custom_secret
-        && let Some(secret) = crate::credentials::read_account_secret(&account.id) {
-            let secret = secret.trim();
-            if let Ok(v) = serde_json::from_str::<Value>(secret) {
-                if let Some(c) = v
-                    .get("authCookie")
-                    .or_else(|| v.get("auth_cookie"))
-                    .or_else(|| v.get("cookie"))
-                    .and_then(Value::as_str)
-                {
-                    auth_cookie = c.trim().to_string();
-                }
-                if workspace_id.is_empty()
-                    && let Some(w) = v
-                        .get("workspaceId")
-                        .or_else(|| v.get("workspace_id"))
-                        .and_then(Value::as_str)
-                    {
-                        workspace_id = w.trim().to_string();
-                    }
-            } else if !secret.is_empty() {
-                auth_cookie = secret.to_string();
+        && let Some(secret) = crate::credentials::read_account_secret(&account.id)
+    {
+        let secret = secret.trim();
+        if let Ok(v) = serde_json::from_str::<Value>(secret) {
+            if let Some(c) = v
+                .get("authCookie")
+                .or_else(|| v.get("auth_cookie"))
+                .or_else(|| v.get("cookie"))
+                .and_then(Value::as_str)
+            {
+                auth_cookie = c.trim().to_string();
             }
+            if workspace_id.is_empty()
+                && let Some(w) = v
+                    .get("workspaceId")
+                    .or_else(|| v.get("workspace_id"))
+                    .and_then(Value::as_str)
+            {
+                workspace_id = w.trim().to_string();
+            }
+        } else if !secret.is_empty() {
+            auth_cookie = secret.to_string();
         }
+    }
 
     if auth_cookie.is_empty()
-        && let Ok(c) = std::env::var("OPENCODE_GO_AUTH_COOKIE") {
-            auth_cookie = c.trim().to_string();
-        }
+        && let Ok(c) = std::env::var("OPENCODE_GO_AUTH_COOKIE")
+    {
+        auth_cookie = c.trim().to_string();
+    }
     if workspace_id.is_empty()
-        && let Ok(w) = std::env::var("OPENCODE_GO_WORKSPACE_ID") {
-            workspace_id = w.trim().to_string();
-        }
+        && let Ok(w) = std::env::var("OPENCODE_GO_WORKSPACE_ID")
+    {
+        workspace_id = w.trim().to_string();
+    }
 
     if auth_cookie.is_empty() || workspace_id.is_empty() {
         let mut candidates = Vec::new();
@@ -349,37 +356,52 @@ pub async fn opencode(account: &Account) -> Result<Snapshot, Failure> {
             candidates.push(PathBuf::from(p));
         }
         if let Ok(app_data) = std::env::var("APPDATA") {
-            candidates.push(PathBuf::from(app_data).join("opencode-go").join("config.json"));
+            candidates.push(
+                PathBuf::from(app_data)
+                    .join("opencode-go")
+                    .join("config.json"),
+            );
         }
         if let Ok(home) = std::env::var("USERPROFILE") {
             let home_p = PathBuf::from(home);
-            candidates.push(home_p.join(".config").join("opencode-bar").join("opencode-go.json"));
-            candidates.push(home_p.join(".config").join("opencode-quota").join("opencode-go.json"));
+            candidates.push(
+                home_p
+                    .join(".config")
+                    .join("opencode-bar")
+                    .join("opencode-go.json"),
+            );
+            candidates.push(
+                home_p
+                    .join(".config")
+                    .join("opencode-quota")
+                    .join("opencode-go.json"),
+            );
         }
         for path in candidates {
             if let Ok(content) = std::fs::read_to_string(&path)
-                && let Ok(cfg) = serde_json::from_str::<Value>(&content) {
-                    if auth_cookie.is_empty()
-                        && let Some(c) = cfg
-                            .get("authCookie")
-                            .or_else(|| cfg.get("auth_cookie"))
-                            .or_else(|| cfg.get("cookie"))
-                            .and_then(Value::as_str)
-                        {
-                            auth_cookie = c.trim().to_string();
-                        }
-                    if workspace_id.is_empty()
-                        && let Some(w) = cfg
-                            .get("workspaceId")
-                            .or_else(|| cfg.get("workspace_id"))
-                            .and_then(Value::as_str)
-                        {
-                            workspace_id = w.trim().to_string();
-                        }
-                    if !auth_cookie.is_empty() && !workspace_id.is_empty() {
-                        break;
-                    }
+                && let Ok(cfg) = serde_json::from_str::<Value>(&content)
+            {
+                if auth_cookie.is_empty()
+                    && let Some(c) = cfg
+                        .get("authCookie")
+                        .or_else(|| cfg.get("auth_cookie"))
+                        .or_else(|| cfg.get("cookie"))
+                        .and_then(Value::as_str)
+                {
+                    auth_cookie = c.trim().to_string();
                 }
+                if workspace_id.is_empty()
+                    && let Some(w) = cfg
+                        .get("workspaceId")
+                        .or_else(|| cfg.get("workspace_id"))
+                        .and_then(Value::as_str)
+                {
+                    workspace_id = w.trim().to_string();
+                }
+                if !auth_cookie.is_empty() && !workspace_id.is_empty() {
+                    break;
+                }
+            }
         }
     }
 
@@ -500,24 +522,27 @@ pub async fn cursor(account: &Account) -> Result<Snapshot, Failure> {
     let mut session_cookie = None;
 
     if account.has_custom_secret
-        && let Some(secret) = crate::credentials::read_account_secret(&account.id) {
-            session_cookie = normalize_cursor_session_cookie(&secret);
-        }
+        && let Some(secret) = crate::credentials::read_account_secret(&account.id)
+    {
+        session_cookie = normalize_cursor_session_cookie(&secret);
+    }
 
     if session_cookie.is_none()
-        && let Ok(token) = std::env::var("CURSOR_SESSION_TOKEN") {
-            session_cookie = normalize_cursor_session_cookie(&token);
-        }
+        && let Ok(token) = std::env::var("CURSOR_SESSION_TOKEN")
+    {
+        session_cookie = normalize_cursor_session_cookie(&token);
+    }
 
     if session_cookie.is_none()
         && let Some(path) = cursor_state_db_path(account)
-            && let Ok(Some(access_token)) = crate::winsqlite::query_optional_text(
-                &path,
-                "SELECT value FROM ItemTable WHERE key = ?",
-                "cursorAuth/accessToken",
-            ) {
-                session_cookie = cursor_cookie_from_access_token(&access_token);
-            }
+        && let Ok(Some(access_token)) = crate::winsqlite::query_optional_text(
+            &path,
+            "SELECT value FROM ItemTable WHERE key = ?",
+            "cursorAuth/accessToken",
+        )
+    {
+        session_cookie = cursor_cookie_from_access_token(&access_token);
+    }
 
     let cookie = session_cookie.ok_or_else(|| {
         Failure::new(
@@ -581,71 +606,90 @@ pub async fn grok(account: &Account) -> Result<Snapshot, Failure> {
 
     // 1. Check custom secret in Windows Credential Manager
     if account.has_custom_secret
-        && let Some(secret) = crate::credentials::read_account_secret(&account.id) {
-            let secret = secret.trim();
-            if let Ok(v) = serde_json::from_str::<Value>(secret) {
-                if let Some(tok) = v
-                    .get("key")
-                    .or_else(|| v.get("access_token"))
-                    .or_else(|| v.get("token"))
-                    .and_then(Value::as_str)
-                {
-                    access_token = tok.trim().to_string();
-                }
-                if let Some(uid) = v.get("user_id").or_else(|| v.get("userId")).and_then(Value::as_str) {
-                    user_id = uid.trim().to_string();
-                }
-            } else if !secret.is_empty() {
-                access_token = secret.to_string();
+        && let Some(secret) = crate::credentials::read_account_secret(&account.id)
+    {
+        let secret = secret.trim();
+        if let Ok(v) = serde_json::from_str::<Value>(secret) {
+            if let Some(tok) = v
+                .get("key")
+                .or_else(|| v.get("access_token"))
+                .or_else(|| v.get("token"))
+                .and_then(Value::as_str)
+            {
+                access_token = tok.trim().to_string();
             }
+            if let Some(uid) = v
+                .get("user_id")
+                .or_else(|| v.get("userId"))
+                .and_then(Value::as_str)
+            {
+                user_id = uid.trim().to_string();
+            }
+        } else if !secret.is_empty() {
+            access_token = secret.to_string();
         }
+    }
 
     // 2. Check environment
     if access_token.is_empty()
         && let Ok(tok) = std::env::var("GROK_API_KEY")
             .or_else(|_| std::env::var("XAI_API_KEY"))
             .or_else(|_| std::env::var("GROK_SESSION_TOKEN"))
-        {
-            access_token = tok.trim().to_string();
-        }
+    {
+        access_token = tok.trim().to_string();
+    }
 
     // 3. Check auth.json
     if access_token.is_empty()
         && let Some(path) = grok_auth_path(account)
-            && let Ok(content) = std::fs::read_to_string(&path)
-                && let Ok(entries) = serde_json::from_str::<std::collections::BTreeMap<String, Value>>(&content) {
-                    let mut best: Option<(String, String, Option<chrono::DateTime<Utc>>)> = None;
-                    for (scope, entry) in entries {
-                        let valid_scope = scope == "https://accounts.x.ai/sign-in"
-                            || scope
-                                .strip_prefix("https://auth.x.ai::")
-                                .is_some_and(|client| !client.is_empty());
-                        if !valid_scope {
-                            continue;
-                        }
-                        let key = entry.get("key").and_then(Value::as_str).unwrap_or("").trim();
-                        if key.is_empty() {
-                            continue;
-                        }
-                        let uid = entry.get("user_id").and_then(Value::as_str).unwrap_or("").trim();
-                        let exp = entry.get("expires_at").and_then(|v| {
-                            v.as_str().and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok().map(|dt| dt.with_timezone(&Utc)))
-                        });
-                        let is_better = match (&best, exp) {
-                            (None, _) => true,
-                            (Some((_, _, Some(best_exp))), Some(this_exp)) => this_exp > *best_exp,
-                            (Some((_, _, None)), Some(_)) => true,
-                            _ => false,
-                        };
-                        if is_better {
-                            best = Some((key.to_string(), uid.to_string(), exp));
-                        }
-                    }
-                    if let Some((tok, uid, _)) = best {
-                        access_token = tok;
-                        user_id = uid;
-                    }
-                }
+        && let Ok(content) = std::fs::read_to_string(&path)
+        && let Ok(entries) =
+            serde_json::from_str::<std::collections::BTreeMap<String, Value>>(&content)
+    {
+        let mut best: Option<(String, String, Option<chrono::DateTime<Utc>>)> = None;
+        for (scope, entry) in entries {
+            let valid_scope = scope == "https://accounts.x.ai/sign-in"
+                || scope
+                    .strip_prefix("https://auth.x.ai::")
+                    .is_some_and(|client| !client.is_empty());
+            if !valid_scope {
+                continue;
+            }
+            let key = entry
+                .get("key")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim();
+            if key.is_empty() {
+                continue;
+            }
+            let uid = entry
+                .get("user_id")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim();
+            let exp = entry.get("expires_at").and_then(|v| {
+                v.as_str().and_then(|s| {
+                    chrono::DateTime::parse_from_rfc3339(s)
+                        .ok()
+                        .map(|dt| dt.with_timezone(&Utc))
+                })
+            });
+            let is_better = match (&best, exp) {
+                (None, _) => true,
+                (Some((_, _, Some(best_exp))), Some(this_exp)) => this_exp > *best_exp,
+                (Some((_, _, None)), Some(_)) => true,
+                _ => false,
+            };
+            if is_better {
+                best = Some((key.to_string(), uid.to_string(), exp));
+            }
+        }
+        if let Some((tok, uid, _)) = best {
+            access_token = tok;
+            user_id = uid;
+        }
+    }
 
     if access_token.is_empty() {
         return Err(Failure::new(
@@ -700,7 +744,9 @@ fn copilot_cli_credentials() -> Vec<crate::credentials::StoredCredential> {
     let mut credentials = crate::credentials::enumerate_generic("https://github.com:")
         .into_iter()
         .filter(|c| c.target.ends_with(".copilot-cli"))
-        .chain(crate::credentials::enumerate_generic("copilot-cli/https://github.com:"))
+        .chain(crate::credentials::enumerate_generic(
+            "copilot-cli/https://github.com:",
+        ))
         .collect::<Vec<_>>();
     credentials.sort_by_key(|c| std::cmp::Reverse(c.last_written));
     credentials
@@ -729,61 +775,85 @@ fn copilot_file_credentials() -> Vec<(String, String)> {
             let p = dir.join(file);
             if p.is_file()
                 && let Ok(content) = std::fs::read_to_string(&p)
-                    && let Ok(val) = serde_json::from_str::<Value>(&content)
-                        && let Some(tok) = val
-                            .get("github.com")
-                            .and_then(|g| g.get("oauth_token").or_else(|| g.get("token")))
-                            .and_then(Value::as_str)
-                        {
-                            out.push((format!("file {}", p.display()), tok.trim().to_string()));
-                        }
+                && let Ok(val) = serde_json::from_str::<Value>(&content)
+                && let Some(tok) = val
+                    .get("github.com")
+                    .and_then(|g| g.get("oauth_token").or_else(|| g.get("token")))
+                    .and_then(Value::as_str)
+            {
+                out.push((format!("file {}", p.display()), tok.trim().to_string()));
+            }
         }
     }
     out
+}
+
+fn copilot_custom_token(secret: Option<&str>) -> Result<String, Failure> {
+    let secret = secret.unwrap_or_default().trim();
+    let token = match serde_json::from_str::<Value>(secret) {
+        Ok(v) => v
+            .get("token")
+            .or_else(|| v.get("oauth_token"))
+            .or_else(|| v.get("key"))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim()
+            .to_owned(),
+        Err(_) => secret.to_owned(),
+    };
+    if !is_header_safe_token(&token) {
+        return Err(Failure::new(
+            Status::LoginRequired,
+            "The saved Copilot token is missing or invalid. Update the account secret or clear it to use the local sign-in.",
+        ));
+    }
+    Ok(token)
 }
 
 pub async fn copilot(account: &Account) -> Result<Snapshot, Failure> {
     let mut candidates: Vec<(String, String)> = Vec::new();
 
     // 1. Custom secret in Credential Manager
-    if account.has_custom_secret
-        && let Some(secret) = crate::credentials::read_account_secret(&account.id) {
-            let secret = secret.trim();
-            if let Ok(v) = serde_json::from_str::<Value>(secret) {
-                if let Some(tok) = v
-                    .get("token")
-                    .or_else(|| v.get("oauth_token"))
-                    .or_else(|| v.get("key"))
-                    .and_then(Value::as_str)
-                {
-                    candidates.push(("custom secret".into(), tok.trim().to_string()));
+    if account.has_custom_secret {
+        let secret = crate::credentials::read_account_secret(&account.id);
+        candidates.push((
+            "custom secret".into(),
+            copilot_custom_token(secret.as_deref())?,
+        ));
+    } else {
+        // 2. Environment variables
+        for var in [
+            "COPILOT_GITHUB_TOKEN",
+            "GH_TOKEN",
+            "GITHUB_TOKEN",
+            "COPILOT_TOKEN",
+        ] {
+            if let Ok(tok) = std::env::var(var) {
+                let tok = tok.trim();
+                if !tok.is_empty() {
+                    candidates.push((format!("env {var}"), tok.to_string()));
                 }
-            } else if !secret.is_empty() {
-                candidates.push(("custom secret".into(), secret.to_string()));
             }
         }
 
-    // 2. Environment variables
-    for var in ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "COPILOT_TOKEN"] {
-        if let Ok(tok) = std::env::var(var) {
-            let tok = tok.trim();
-            if !tok.is_empty() {
-                candidates.push((format!("env {var}"), tok.to_string()));
-            }
+        // 3. Stored Windows credentials from Copilot CLI and GitHub CLI
+        for cred in copilot_cli_credentials() {
+            candidates.push((
+                format!("credential {}", cred.target),
+                cred.secret.trim().to_string(),
+            ));
         }
-    }
+        for cred in gh_cli_credentials() {
+            candidates.push((
+                format!("credential {}", cred.target),
+                cred.secret.trim().to_string(),
+            ));
+        }
 
-    // 3. Stored Windows credentials from Copilot CLI and GitHub CLI
-    for cred in copilot_cli_credentials() {
-        candidates.push((format!("credential {}", cred.target), cred.secret.trim().to_string()));
-    }
-    for cred in gh_cli_credentials() {
-        candidates.push((format!("credential {}", cred.target), cred.secret.trim().to_string()));
-    }
-
-    // 4. Local file credentials
-    for (src, tok) in copilot_file_credentials() {
-        candidates.push((src, tok));
+        // 4. Local file credentials
+        for (src, tok) in copilot_file_credentials() {
+            candidates.push((src, tok));
+        }
     }
 
     // Filter valid tokens and deduplicate
@@ -835,7 +905,9 @@ pub async fn copilot(account: &Account) -> Result<Snapshot, Failure> {
         let status_code = response.status();
         let headers = response.headers().clone();
 
-        if status_code == reqwest::StatusCode::UNAUTHORIZED || status_code == reqwest::StatusCode::FORBIDDEN {
+        if status_code == reqwest::StatusCode::UNAUTHORIZED
+            || status_code == reqwest::StatusCode::FORBIDDEN
+        {
             last_failure = Some(Failure::new(
                 Status::LoginRequired,
                 format!("GitHub Copilot rejected authentication from {source}."),
@@ -1010,8 +1082,12 @@ fn read_antigravity_token_data(account: &Account) -> Option<AntigravityCreds> {
     let file_dirs = [
         std::env::var_os("USERPROFILE")
             .map(|u| PathBuf::from(u).join(".antigravity").join("auth.json")),
-        std::env::var_os("USERPROFILE")
-            .map(|u| PathBuf::from(u).join(".config").join("antigravity").join("auth.json")),
+        std::env::var_os("USERPROFILE").map(|u| {
+            PathBuf::from(u)
+                .join(".config")
+                .join("antigravity")
+                .join("auth.json")
+        }),
         std::env::var_os("LOCALAPPDATA")
             .map(|l| PathBuf::from(l).join("antigravity").join("auth.json")),
     ];
@@ -1141,7 +1217,10 @@ fn oauth_clients_from_bytes(bytes: &[u8]) -> Vec<(String, String)> {
         .collect()
 }
 
-async fn refresh_antigravity_token(client: &reqwest::Client, refresh_token: &str) -> Option<String> {
+async fn refresh_antigravity_token(
+    client: &reqwest::Client,
+    refresh_token: &str,
+) -> Option<String> {
     let clients = installed_antigravity_oauth_clients();
     for (client_id, client_secret) in clients {
         let params = [
@@ -1175,9 +1254,11 @@ pub async fn antigravity(account: &Account) -> Result<Snapshot, Failure> {
 
     let client = crate::http::create_client()?;
 
-    let is_expired = creds.expiry.as_deref().and_then(|s| {
-        chrono::DateTime::parse_from_rfc3339(s).ok()
-    }).is_some_and(|exp| exp.with_timezone(&Utc) <= Utc::now() + chrono::Duration::seconds(60));
+    let is_expired = creds
+        .expiry
+        .as_deref()
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .is_some_and(|exp| exp.with_timezone(&Utc) <= Utc::now() + chrono::Duration::seconds(60));
 
     let mut token = creds.access_token;
     if (token.is_empty() || is_expired)
@@ -1215,25 +1296,34 @@ pub async fn antigravity(account: &Account) -> Result<Snapshot, Failure> {
         let load_resp = match load_res {
             Ok(r) => r,
             Err(e) => {
-                last_failure = Some(Failure::new(Status::Offline, format!("Antigravity connection failed: {e}")));
+                last_failure = Some(Failure::new(
+                    Status::Offline,
+                    format!("Antigravity connection failed: {e}"),
+                ));
                 continue;
             }
         };
 
         let load_status = load_resp.status();
-        if load_status == reqwest::StatusCode::UNAUTHORIZED || load_status == reqwest::StatusCode::FORBIDDEN {
+        if load_status == reqwest::StatusCode::UNAUTHORIZED
+            || load_status == reqwest::StatusCode::FORBIDDEN
+        {
             auth_failed = true;
             continue;
         }
 
         let project_id = if load_status.is_success() {
-            let bytes = crate::http::read_bounded_bytes(load_resp, 524_288).await.ok();
-            bytes.and_then(|b| serde_json::from_slice::<Value>(&b).ok()).and_then(|v| {
-                v.get("cloudaicompanionProject")
-                    .or_else(|| v.get("project"))
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-            })
+            let bytes = crate::http::read_bounded_bytes(load_resp, 524_288)
+                .await
+                .ok();
+            bytes
+                .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+                .and_then(|v| {
+                    v.get("cloudaicompanionProject")
+                        .or_else(|| v.get("project"))
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                })
         } else {
             None
         };
@@ -1280,7 +1370,9 @@ pub async fn antigravity(account: &Account) -> Result<Snapshot, Failure> {
 
         if let Ok(models_resp) = models_res {
             let status = models_resp.status();
-            if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+            if status == reqwest::StatusCode::UNAUTHORIZED
+                || status == reqwest::StatusCode::FORBIDDEN
+            {
                 auth_failed = true;
                 continue;
             }
@@ -1561,6 +1653,36 @@ pub fn safe_navigation(url: &tauri::Url, provider: Provider) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn custom_copilot_tokens_reject_missing_and_invalid_secrets() {
+        for secret in [
+            None,
+            Some(""),
+            Some("{}"),
+            Some("{\"token\":\"\"}"),
+            Some("bad\ntoken"),
+        ] {
+            assert!(matches!(
+                copilot_custom_token(secret),
+                Err(Failure {
+                    status: Status::LoginRequired,
+                    ..
+                })
+            ));
+        }
+        for secret in [
+            " test-token ",
+            "{\"token\":\"test-token\"}",
+            "{\"oauth_token\":\"test-token\"}",
+            "{\"key\":\"test-token\"}",
+        ] {
+            assert_eq!(
+                copilot_custom_token(Some(secret))
+                    .unwrap_or_else(|_| panic!("valid token rejected")),
+                "test-token"
+            );
+        }
+    }
     #[test]
     fn provider_windows_reject_other_origins_and_deceptive_hosts() {
         assert!(safe_navigation(
