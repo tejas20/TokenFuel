@@ -15,6 +15,8 @@ Sources: [Codex poller](https://github.com/CodeZeno/Claude-Code-Usage-Monitor/bl
 
 ## Accuracy and freshness
 
+Rebuilt compact native app verification: its automatic poll at `2026-10-02T14:49:10Z` returned **93% five-hour / 80% weekly remaining**, matching a separate Codex app quota read. The cache contained the new duration-based identities (`codex:window:300`, `codex:window:10080`). The checksum-verified launcher downloaded the compact private release, started that binary, and subsequent invocation reused the running process. This validates native startup and polling, not physical tray/drag interactions.
+
 Both applications use provider-reported values instead of counting conversation tokens as a substitute for subscription allowances. The reference defaults to 15-minute polling (`app_settings.rs`); TokenFuel defaults to two minutes and respects per-account backoff and provider retry instructions. Neither can promise instant or uninterrupted counters during provider delays, outages, rate limiting or expired sessions. TokenFuel preserves cached values with visible stale/error states and never synthesizes a missing denominator/reset date. Codex credit balances have no remaining percentage unless a real ceiling exists; the reference additionally maintains an observed credit baseline.
 
 This review also fixed Codex pin identity: a weekly pool retains its identity when the provider moves it from secondary to primary. Unknown or duplicate-duration pools remain separate, rather than being merged. Existing preview pins using old slot IDs may need re-pinning in expanded details; missing pins remain unavailable instead of silently selecting another pool.

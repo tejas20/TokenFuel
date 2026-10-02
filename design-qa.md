@@ -36,5 +36,6 @@ No actionable P0/P1/P2 findings remain. Browser error logs for the fresh final d
 - [P3] Assess actual Windows display scaling, optical spacing and truncation at 125/150/200%.
 - Native drag/snap, multiple monitors, tray, startup and alerts still need physical interaction checks; this browser QA does not certify them.
 - Gemini native isolated sign-in/reload and live Claude Enterprise member comparisons remain outstanding. Codex polling is live-verified separately in `docs/reference-comparison.md`.
+- The compact native binary's automatic poll at 14:49:10 UTC matched the independent Codex app read (93% five-hour / 80% weekly). Installer and portable assets are in private draft `v0.1.0-compact.1`; launcher cold download/checksum and running-process reuse succeeded.
 
 final result: passed
