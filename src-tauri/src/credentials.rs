@@ -37,7 +37,7 @@ unsafe extern "system" {
 }
 
 /// A generic Windows credential whose secret decoded as text.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct StoredCredential {
     pub target: String,
     pub last_written: u64,
@@ -177,15 +177,31 @@ pub fn read_account_secret(account_id: &str) -> Option<String> {
 }
 
 pub fn delete_account_secret(account_id: &str) -> Result<(), String> {
-    if let Ok(entry) = keyring::Entry::new("TokenFuel", account_id) {
-        let _ = entry.delete_credential();
+    let entry = keyring::Entry::new("TokenFuel", account_id)
+        .map_err(|_| "Windows Credential Manager unavailable.")?;
+    match entry.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(_) => Err("Could not delete the saved account secret from Credential Manager.".into()),
     }
-    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(windows)]
+    fn isolated_windows_credential_roundtrip_and_deletion() {
+        let id = format!("test-{}", uuid::Uuid::new_v4());
+        save_account_secret(&id, "synthetic-session").unwrap();
+        assert_eq!(
+            read_account_secret(&id).as_deref(),
+            Some("synthetic-session")
+        );
+        delete_account_secret(&id).unwrap();
+        assert!(read_account_secret(&id).is_none());
+        delete_account_secret(&id).unwrap();
+    }
 
     #[test]
     fn secrets_decode_from_utf8_and_utf16() {

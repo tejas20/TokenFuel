@@ -240,3 +240,86 @@ fn query_single_param(conn: &Connection, sql: &str, param: &str) -> Result<Optio
         }
     }
 }
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn windows_sqlite_reader_binds_keys_and_cannot_write_to_the_source() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.vscdb");
+        let filename = CString::new(path.to_str().unwrap()).unwrap();
+        let mut raw = ptr::null_mut();
+        assert_eq!(
+            unsafe {
+                sqlite3_open_v2(
+                    filename.as_ptr(),
+                    &mut raw,
+                    SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+                    ptr::null(),
+                )
+            },
+            SQLITE_OK
+        );
+        {
+            let connection = Connection { raw };
+            for sql in [
+                "CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)",
+                "INSERT INTO ItemTable VALUES ('cursorAuth/accessToken', 'synthetic-session')",
+            ] {
+                let statement = connection.prepare(sql).unwrap();
+                assert_eq!(unsafe { sqlite3_step(statement.raw) }, SQLITE_DONE);
+            }
+        }
+        let before = std::fs::read(&path).unwrap();
+        let sql = "SELECT value FROM ItemTable WHERE key = ?";
+        assert_eq!(
+            query_optional_text(&path, sql, "cursorAuth/accessToken")
+                .unwrap()
+                .as_deref(),
+            Some("synthetic-session")
+        );
+        assert_eq!(query_optional_text(&path, sql, "missing").unwrap(), None);
+        assert_eq!(
+            query_optional_text(&path, sql, "' OR 1=1 --").unwrap(),
+            None
+        );
+        assert!(
+            query_optional_text(
+                &path,
+                "DELETE FROM ItemTable WHERE key = ?",
+                "cursorAuth/accessToken"
+            )
+            .is_err()
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn in_memory_backup_keeps_quota_session_lookup_available() {
+        let source = Connection::open_in_memory().unwrap();
+        let statement = source
+            .prepare("CREATE TABLE ItemTable (key TEXT, value TEXT)")
+            .unwrap();
+        assert_eq!(unsafe { sqlite3_step(statement.raw) }, SQLITE_DONE);
+        drop(statement);
+        let statement = source
+            .prepare("INSERT INTO ItemTable VALUES ('session', 'synthetic-session')")
+            .unwrap();
+        assert_eq!(unsafe { sqlite3_step(statement.raw) }, SQLITE_DONE);
+        drop(statement);
+        let snapshot = Connection::open_in_memory().unwrap();
+        snapshot.backup_from(&source).unwrap();
+        assert_eq!(
+            query_single_param(
+                &snapshot,
+                "SELECT value FROM ItemTable WHERE key = ?",
+                "session"
+            )
+            .unwrap()
+            .as_deref(),
+            Some("synthetic-session")
+        );
+    }
+}

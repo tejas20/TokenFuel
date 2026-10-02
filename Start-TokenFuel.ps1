@@ -8,7 +8,7 @@ function Get-FuelHash([string]$Path) {
     try { return ([BitConverter]::ToString($fuelHasher.ComputeHash($fuelStream))).Replace('-','') }
     finally { $fuelStream.Dispose(); $fuelHasher.Dispose() }
 }
-$fuelVersion = 'v0.1.0-compact.2'
+$fuelVersion = 'v0.1.0'
 $fuelRepo = 'tejas20/TokenFuel'
 $fuelZip = 'TokenFuel_0.1.0_x64-portable.zip'
 if ($env:OS -ne 'Windows_NT' -or -not [Environment]::Is64BitOperatingSystem) {

@@ -34,6 +34,17 @@ impl From<crate::http::Failure> for Failure {
     }
 }
 
+fn account_secret(account: &Account) -> Result<Option<String>, Failure> {
+    if !account.has_custom_secret {
+        return Ok(None);
+    }
+    crate::credentials::read_account_secret(&account.id)
+        .filter(|secret| !secret.trim().is_empty())
+        .map(Some)
+        .ok_or_else(|| Failure::new(Status::LoginRequired,
+            "The saved account secret is missing. Update it or clear it to use the local sign-in."))
+}
+
 pub async fn fetch(app: &AppHandle, account: &Account) -> Result<Snapshot, Failure> {
     if !account.enabled {
         return Ok(Snapshot::empty(
@@ -310,9 +321,7 @@ pub async fn opencode(account: &Account) -> Result<Snapshot, Failure> {
     let mut workspace_id = account.workspace.trim().to_string();
     let mut auth_cookie = String::new();
 
-    if account.has_custom_secret
-        && let Some(secret) = crate::credentials::read_account_secret(&account.id)
-    {
+    if let Some(secret) = account_secret(account)? {
         let secret = secret.trim();
         if let Ok(v) = serde_json::from_str::<Value>(secret) {
             if let Some(c) = v
@@ -336,6 +345,12 @@ pub async fn opencode(account: &Account) -> Result<Snapshot, Failure> {
         }
     }
 
+    if account.has_custom_secret && (auth_cookie.is_empty() || workspace_id.is_empty()) {
+        return Err(Failure::new(
+            Status::LoginRequired,
+            "The saved OpenCode secret needs an auth cookie and workspace ID. Update Advanced connection settings.",
+        ));
+    }
     if auth_cookie.is_empty()
         && let Ok(c) = std::env::var("OPENCODE_GO_AUTH_COOKIE")
     {
@@ -521,10 +536,15 @@ fn cursor_state_db_path(account: &Account) -> Option<PathBuf> {
 pub async fn cursor(account: &Account) -> Result<Snapshot, Failure> {
     let mut session_cookie = None;
 
-    if account.has_custom_secret
-        && let Some(secret) = crate::credentials::read_account_secret(&account.id)
-    {
+    if let Some(secret) = account_secret(account)? {
         session_cookie = normalize_cursor_session_cookie(&secret);
+    }
+
+    if account.has_custom_secret && session_cookie.is_none() {
+        return Err(Failure::new(
+            Status::LoginRequired,
+            "The saved Cursor session is invalid. Update or clear the account secret.",
+        ));
     }
 
     if session_cookie.is_none()
@@ -605,9 +625,7 @@ pub async fn grok(account: &Account) -> Result<Snapshot, Failure> {
     let mut user_id = String::new();
 
     // 1. Check custom secret in Windows Credential Manager
-    if account.has_custom_secret
-        && let Some(secret) = crate::credentials::read_account_secret(&account.id)
-    {
+    if let Some(secret) = account_secret(account)? {
         let secret = secret.trim();
         if let Ok(v) = serde_json::from_str::<Value>(secret) {
             if let Some(tok) = v
@@ -628,6 +646,13 @@ pub async fn grok(account: &Account) -> Result<Snapshot, Failure> {
         } else if !secret.is_empty() {
             access_token = secret.to_string();
         }
+    }
+
+    if account.has_custom_secret && access_token.is_empty() {
+        return Err(Failure::new(
+            Status::LoginRequired,
+            "The saved Grok secret needs an access token. Update or clear the account secret.",
+        ));
     }
 
     // 2. Check environment
@@ -987,9 +1012,8 @@ struct AntigravityCreds {
 
 fn read_antigravity_token_data(account: &Account) -> Option<AntigravityCreds> {
     // 1. Custom secret in Credential Manager
-    if account.has_custom_secret
-        && let Some(secret) = crate::credentials::read_account_secret(&account.id)
-    {
+    if account.has_custom_secret {
+        let secret = account_secret(account).ok()??;
         let secret = secret.trim();
         if let Ok(v) = serde_json::from_str::<Value>(secret) {
             let tok = v
@@ -1025,6 +1049,7 @@ fn read_antigravity_token_data(account: &Account) -> Option<AntigravityCreds> {
                 expiry: None,
             });
         }
+        return None;
     }
 
     // 2. Env vars
@@ -1424,7 +1449,7 @@ async fn browser(app: &AppHandle, account: &Account) -> Result<Snapshot, Failure
         _ => {
             return Err(Failure::new(
                 Status::Unavailable,
-                "Grok is planned for a later release.",
+                "Visible Usage capture is not supported for this provider. Choose its local source or a manual snapshot.",
             ));
         }
     };
@@ -1653,6 +1678,30 @@ pub fn safe_navigation(url: &tauri::Url, provider: Provider) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn missing_custom_secrets_fail_before_any_local_fallback_or_network_read() {
+        let mut account = crate::config::Config::default().accounts.remove(0);
+        account.id = uuid::Uuid::new_v4().to_string();
+        account.has_custom_secret = true;
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            for result in [
+                opencode(&account).await,
+                cursor(&account).await,
+                grok(&account).await,
+                copilot(&account).await,
+            ] {
+                assert!(matches!(
+                    result,
+                    Err(Failure {
+                        status: Status::LoginRequired,
+                        ..
+                    })
+                ));
+            }
+        });
+        assert!(read_antigravity_token_data(&account).is_none());
+    }
     #[test]
     fn custom_copilot_tokens_reject_missing_and_invalid_secrets() {
         for secret in [

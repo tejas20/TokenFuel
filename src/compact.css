@@ -388,3 +388,8 @@ body {
     grid-template-columns: 1fr;
   }
 }
+.advanced-connection summary {
+  cursor: pointer;
+  font-size: 12px;
+  margin: 8px 0;
+}

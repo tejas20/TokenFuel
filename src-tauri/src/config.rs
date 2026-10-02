@@ -130,7 +130,7 @@ pub struct Config {
 }
 impl Default for Config {
     fn default() -> Self {
-        let accounts = [Provider::Claude, Provider::Openai, Provider::Gemini]
+        let accounts = [Provider::Openai, Provider::Claude, Provider::Gemini]
             .into_iter()
             .map(|provider| Account {
                 revision: 0,

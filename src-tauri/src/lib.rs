@@ -112,7 +112,12 @@ fn uses_local_session(account: &Account) -> bool {
 }
 
 fn saved_secret_flag(account: &Account, existing: Option<&Account>) -> bool {
-    account.enabled && existing.is_some_and(|old| old.has_custom_secret)
+    account.enabled
+        && existing.is_some_and(|old| {
+            old.has_custom_secret
+                && old.provider == account.provider
+                && old.connection == account.connection
+        })
 }
 
 #[cfg(test)]
@@ -154,6 +159,20 @@ mod account_secret_tests {
             assert!(uses_local_session(&account));
             account.has_custom_secret = true;
         }
+    }
+
+    #[test]
+    fn changing_provider_or_source_cannot_reuse_the_previous_secret() {
+        let mut account = config::Config::default().accounts.remove(0);
+        account.enabled = true;
+        account.has_custom_secret = true;
+        let old = account.clone();
+        assert!(saved_secret_flag(&account, Some(&old)));
+        account.provider = tokenfuel_core::Provider::Cursor;
+        assert!(!saved_secret_flag(&account, Some(&old)));
+        account.provider = old.provider;
+        account.connection = Connection::Manual;
+        assert!(!saved_secret_flag(&account, Some(&old)));
     }
 }
 
@@ -203,8 +222,15 @@ fn save_account(
     if clear {
         c.cached.remove(&account.id);
     }
-    if !account.enabled {
-        let _ = credentials::delete_account_secret(&account.id);
+    let source_changed = c
+        .accounts
+        .iter()
+        .find(|a| a.id == account.id)
+        .is_some_and(|old| {
+            old.provider != account.provider || old.connection != account.connection
+        });
+    if !account.enabled || source_changed {
+        credentials::delete_account_secret(&account.id)?;
         account.has_custom_secret = false;
         if let Some(w) = app.get_webview_window(&format!("provider-{}", account.id)) {
             let _ = w.close();
@@ -231,9 +257,9 @@ fn remove_account(
 ) -> Result<(), String> {
     local_ui(&window)?;
     let mut c = state.config.lock().unwrap();
+    credentials::delete_account_secret(&id)?;
     c.accounts.retain(|a| a.id != id);
     c.cached.remove(&id);
-    let _ = credentials::delete_account_secret(&id);
     if let Some(w) = app.get_webview_window(&format!("provider-{id}")) {
         let _ = w.close();
     }
@@ -273,12 +299,24 @@ fn clear_account_secret(
 ) -> Result<(), String> {
     local_ui(&window)?;
     let mut c = state.config.lock().unwrap();
+    if let Some(account) = c.accounts.iter().find(|a| a.id == id)
+        && account.enabled
+        && is_local_session(&account.connection)
+        && c.accounts.iter().any(|other| {
+            other.id != id
+                && other.enabled
+                && other.provider == account.provider
+                && uses_local_session(other)
+        })
+    {
+        return Err("Disconnect this account before clearing its secret; another account already uses the local sign-in.".into());
+    }
     let a = c
         .accounts
         .iter_mut()
         .find(|a| a.id == id)
         .ok_or("Account missing.")?;
-    let _ = credentials::delete_account_secret(&id);
+    credentials::delete_account_secret(&id)?;
     a.has_custom_secret = false;
     a.revision = a.revision.saturating_add(1);
     c.cached.remove(&id);
@@ -622,6 +660,13 @@ fn snap_window(
 }
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,

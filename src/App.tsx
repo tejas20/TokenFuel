@@ -22,6 +22,7 @@ import { accountName, visibleAccounts, widgetWidth } from "./widget";
 import type { Account, Config, Limit, Provider } from "./types";
 import "./style.css";
 import "./compact.css";
+import { getVersion } from "@tauri-apps/api/app";
 const names: Record<Provider, string> = {
   claude: "Claude",
   openai: "OpenAI",
@@ -33,8 +34,39 @@ const names: Record<Provider, string> = {
   antigravity: "Antigravity",
   unknown: "Unknown",
 };
+const connectionHints: Record<Account["connection"], string> = {
+  codexCli:
+    "Automatically finds the installed Codex app or CLI and uses its current sign-in after you allow access. No token to copy. Tracks Codex allowances; ordinary ChatGPT counters are unavailable.",
+  claudeCli:
+    "Automatically uses the current Claude Code sign-in after you allow access. No token to copy. Experimental; availability depends on your plan.",
+  cursorLocal:
+    "Automatically finds the current Cursor sign-in after you allow access. No token to copy. Experimental; sign in to Cursor first.",
+  copilotCli:
+    "Automatically looks for an existing Copilot CLI or GitHub CLI sign-in after you allow access. No token to copy. Live account verification is still needed.",
+  grokCli:
+    "Automatically looks for an existing Grok CLI sign-in after you allow access. Tracks Grok Build credits; ordinary Grok chat allowances are unavailable.",
+  antigravityLocal:
+    "Automatically looks for an existing Antigravity sign-in after you allow access. Experimental; live account verification is still needed.",
+  opencodeGo:
+    "Uses an existing OpenCode Go monitor configuration if available. Otherwise enter the workspace ID and session cookie in Advanced connection settings. Experimental.",
+  geminiWeb:
+    "Save both permissions, then open the isolated Usage window and sign in. Keep it open for automatic refresh. Sign-in is temporary; some SSO accounts need the manual option.",
+  browser:
+    "Save both permissions, then open the isolated Usage window and sign in. Refresh reads a snapshot of visible usage. Sign-in is temporary; automatic tracking is unavailable with this source.",
+  manual:
+    "Enter the allowance yourself. This snapshot does not update automatically.",
+  unknown: "Choose a supported connection source.",
+};
+const secretConnections: Account["connection"][] = [
+  "opencodeGo",
+  "cursorLocal",
+  "grokCli",
+  "copilotCli",
+  "antigravityLocal",
+];
 export default function App() {
   const [config, setConfig] = useState<Config>(initial),
+    [version, setVersion] = useState(""),
     [settings, setSettings] = useState(false),
     [expanded, setExpanded] = useState<string | null>(null),
     [busy, setBusy] = useState(false),
@@ -42,8 +74,16 @@ export default function App() {
     [now, setNow] = useState(Date.now());
   useEffect(() => {
     command<Config>("read_config")
-      .then(setConfig)
+      .then((loaded) => {
+        setConfig(loaded);
+        if (!demo && !loaded.accounts.some((account) => account.enabled))
+          setSettings(true);
+      })
       .catch((e) => setError(String(e)));
+    if (desktop)
+      getVersion()
+        .then(setVersion)
+        .catch(() => {});
     const timer = setInterval(() => setNow(Date.now()), 30000);
     let dispose: (() => void) | undefined;
     if (desktop)
@@ -282,7 +322,7 @@ export default function App() {
       {settings && (
         <section className="settings">
           <div className="section-title">
-            <strong>Settings</strong>
+            <strong>Settings{version && ` · v${version}`}</strong>
             <button
               aria-label="Close settings"
               onClick={() => setSettings(false)}
@@ -352,7 +392,9 @@ export default function App() {
             keep the account visible.
           </p>
           <p className="hint">
-            Connections stay on this device. Browser sign-in windows are
+            Choose your provider, allow access, and Save. Supported connections
+            find your existing sign-in automatically; you usually do not need a
+            token. Connections stay on this device. Browser sign-in windows are
             isolated and session-only. Gemini live view reloads its Usage page;
             the capture source requires explicit refresh.
           </p>
@@ -376,9 +418,10 @@ export default function App() {
             <Plus /> Add account
           </button>
           <small className="hint">
-            Grok is planned next. Claude Enterprise monthly limits require
-            office verification. Ordinary ChatGPT counters remain unsupported;
-            Gemini live polling needs isolated-window verification.
+            New providers are provisional until verified with your live account.
+            Claude Enterprise monthly limits require office verification.
+            Ordinary ChatGPT counters remain unsupported; Gemini live polling
+            needs isolated-window verification.
           </small>
         </section>
       )}
@@ -393,7 +436,7 @@ export default function App() {
     </main>
   );
 }
-function AccountEditor({
+export function AccountEditor({
   account: a,
   run,
 }: {
@@ -404,6 +447,7 @@ function AccountEditor({
     [manual, setManual] = useState(false),
     [secretInput, setSecretInput] = useState("");
   useEffect(() => setDraft(a), [a.id, a.revision]);
+  useEffect(() => setSecretInput(""), [draft.provider, draft.connection]);
   return (
     <div className="account-editor">
       <div className="edit-row">
@@ -460,13 +504,6 @@ function AccountEditor({
           maxLength={80}
           onChange={(e) => setDraft({ ...draft, label: e.target.value })}
         />
-        <input
-          aria-label="Workspace"
-          placeholder="Workspace (optional)"
-          value={draft.workspace}
-          maxLength={120}
-          onChange={(e) => setDraft({ ...draft, workspace: e.target.value })}
-        />
         <button
           aria-label="Remove account"
           onClick={() => run("remove_account", { id: a.id })}
@@ -498,10 +535,14 @@ function AccountEditor({
             </option>
           )}
           {draft.provider === "opencode" && (
-            <option value="opencodeGo">OpenCode Go status · experimental</option>
+            <option value="opencodeGo">
+              OpenCode Go status · experimental
+            </option>
           )}
           {draft.provider === "cursor" && (
-            <option value="cursorLocal">Cursor local session · experimental</option>
+            <option value="cursorLocal">
+              Cursor local session · experimental
+            </option>
           )}
           {draft.provider === "grok" && (
             <option value="grokCli">Grok CLI auth · experimental</option>
@@ -510,9 +551,13 @@ function AccountEditor({
             <option value="copilotCli">GitHub Copilot · documented</option>
           )}
           {draft.provider === "antigravity" && (
-            <option value="antigravityLocal">Google Antigravity · experimental</option>
+            <option value="antigravityLocal">
+              Google Antigravity · experimental
+            </option>
           )}
-          <option value="browser">Usage view · experimental capture</option>
+          {["openai", "claude", "gemini"].includes(draft.provider) && (
+            <option value="browser">Usage view · experimental capture</option>
+          )}
           <option value="manual">Manual snapshot</option>
         </select>
         {draft.connection !== "manual" && (
@@ -525,7 +570,8 @@ function AccountEditor({
               }
             />
             Allow connection{" "}
-            {draft.connection.endsWith("Cli") || draft.connection.endsWith("Local")
+            {draft.connection.endsWith("Cli") ||
+            draft.connection.endsWith("Local")
               ? "and local session access"
               : ""}
           </label>
@@ -558,46 +604,101 @@ function AccountEditor({
           Save
         </button>
       </div>
-      <div className="edit-row">
-        {draft.hasCustomSecret ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.85em" }}>
-            <span>🔒 Secret saved in Credential Manager</span>
-            <button
-              type="button"
-              onClick={async () => {
-                if (await run("clear_account_secret", { id: a.id })) {
-                  setDraft({ ...draft, hasCustomSecret: false });
-                }
-              }}
-            >
-              Clear Secret
-            </button>
-          </div>
-        ) : (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
+      <p className="hint">{connectionHints[draft.connection]}</p>
+      <details className="advanced-connection">
+        <summary>Advanced connection settings</summary>
+        <div className="edit-row">
+          <input
+            aria-label="Workspace"
+            placeholder="Workspace ID (optional)"
+            value={draft.workspace}
+            maxLength={120}
+            onChange={(e) => setDraft({ ...draft, workspace: e.target.value })}
+          />
+          {draft.connection === "codexCli" && (
             <input
-              type="password"
-              aria-label="Account secret or token"
-              placeholder="API Token, Auth Cookie, or JSON"
-              value={secretInput}
-              onChange={(e) => setSecretInput(e.target.value)}
-              style={{ flex: 1 }}
+              aria-label="Codex executable path"
+              placeholder="Codex executable path (auto-detected)"
+              value={draft.cliPath ?? ""}
+              onChange={(e) =>
+                setDraft({ ...draft, cliPath: e.target.value || null })
+              }
             />
-            <button
-              type="button"
-              disabled={!secretInput.trim()}
-              onClick={async () => {
-                if (await run("save_account_secret", { id: a.id, secret: secretInput.trim() })) {
-                  setSecretInput("");
-                  setDraft({ ...draft, hasCustomSecret: true });
-                }
-              }}
-            >
-              Save Secret
-            </button>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+        {secretConnections.includes(draft.connection) &&
+          draft.provider === a.provider &&
+          draft.connection === a.connection && (
+            <>
+              <p className="hint">
+                Use an account-specific secret only if automatic sign-in is
+                unavailable or you need a separate account. Saved secrets stay
+                in Windows Credential Manager. Save the account before adding a
+                secret.
+              </p>
+
+              <div className="edit-row">
+                {draft.hasCustomSecret ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      fontSize: "0.85em",
+                    }}
+                  >
+                    <span>🔒 Secret saved in Credential Manager</span>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (await run("clear_account_secret", { id: a.id })) {
+                          setDraft({ ...draft, hasCustomSecret: false });
+                        }
+                      }}
+                    >
+                      Clear Secret
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      width: "100%",
+                    }}
+                  >
+                    <input
+                      type="password"
+                      aria-label="Account secret or token"
+                      placeholder="API Token, Auth Cookie, or JSON"
+                      value={secretInput}
+                      onChange={(e) => setSecretInput(e.target.value)}
+                      style={{ flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      disabled={!secretInput.trim()}
+                      onClick={async () => {
+                        if (
+                          await run("save_account_secret", {
+                            id: a.id,
+                            secret: secretInput.trim(),
+                          })
+                        ) {
+                          setSecretInput("");
+                          setDraft({ ...draft, hasCustomSecret: true });
+                        }
+                      }}
+                    >
+                      Save Secret
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+      </details>
       {(draft.connection === "browser" || draft.connection === "geminiWeb") && (
         <button onClick={() => run("open_provider", { id: a.id })}>
           Open isolated sign-in / Usage view
