@@ -55,6 +55,7 @@ pub async fn fetch(app: &AppHandle, account: &Account) -> Result<Snapshot, Failu
             opencode(account).await
         }
         Connection::CursorLocal if account.provider == Provider::Cursor => cursor(account).await,
+        Connection::GrokCli if account.provider == Provider::Grok => grok(account).await,
         Connection::Browser => browser(app, account).await,
         Connection::GeminiWeb if account.provider == Provider::Gemini => {
             gemini_web(app, account).await
@@ -560,6 +561,145 @@ pub async fn cursor(account: &Account) -> Result<Snapshot, Failure> {
 
     let mut snapshot = Snapshot::ready(&account.id, account.provider, limits);
     snapshot.message = "Cursor Models · monthly allowance".into();
+    Ok(snapshot)
+}
+
+fn grok_auth_path(account: &Account) -> Option<PathBuf> {
+    if let Some(ref p) = account.credential_path {
+        let path = PathBuf::from(p);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    if let Ok(home) = std::env::var("GROK_HOME") {
+        let path = PathBuf::from(home).join("auth.json");
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    let user_profile = std::env::var_os("USERPROFILE")?;
+    let path = PathBuf::from(user_profile).join(".grok").join("auth.json");
+    path.is_file().then_some(path)
+}
+
+pub async fn grok(account: &Account) -> Result<Snapshot, Failure> {
+    let mut access_token = String::new();
+    let mut user_id = String::new();
+
+    // 1. Check custom secret in Windows Credential Manager
+    if account.has_custom_secret {
+        if let Some(secret) = crate::credentials::read_account_secret(&account.id) {
+            let secret = secret.trim();
+            if let Ok(v) = serde_json::from_str::<Value>(secret) {
+                if let Some(tok) = v
+                    .get("key")
+                    .or_else(|| v.get("access_token"))
+                    .or_else(|| v.get("token"))
+                    .and_then(Value::as_str)
+                {
+                    access_token = tok.trim().to_string();
+                }
+                if let Some(uid) = v.get("user_id").or_else(|| v.get("userId")).and_then(Value::as_str) {
+                    user_id = uid.trim().to_string();
+                }
+            } else if !secret.is_empty() {
+                access_token = secret.to_string();
+            }
+        }
+    }
+
+    // 2. Check environment
+    if access_token.is_empty() {
+        if let Ok(tok) = std::env::var("GROK_API_KEY")
+            .or_else(|_| std::env::var("XAI_API_KEY"))
+            .or_else(|_| std::env::var("GROK_SESSION_TOKEN"))
+        {
+            access_token = tok.trim().to_string();
+        }
+    }
+
+    // 3. Check auth.json
+    if access_token.is_empty() {
+        if let Some(path) = grok_auth_path(account) {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok(entries) = serde_json::from_str::<std::collections::BTreeMap<String, Value>>(&content) {
+                    let mut best: Option<(String, String, Option<chrono::DateTime<Utc>>)> = None;
+                    for (scope, entry) in entries {
+                        let valid_scope = scope == "https://accounts.x.ai/sign-in"
+                            || scope
+                                .strip_prefix("https://auth.x.ai::")
+                                .is_some_and(|client| !client.is_empty());
+                        if !valid_scope {
+                            continue;
+                        }
+                        let key = entry.get("key").and_then(Value::as_str).unwrap_or("").trim();
+                        if key.is_empty() {
+                            continue;
+                        }
+                        let uid = entry.get("user_id").and_then(Value::as_str).unwrap_or("").trim();
+                        let exp = entry.get("expires_at").and_then(|v| {
+                            v.as_str().and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok().map(|dt| dt.with_timezone(&Utc)))
+                        });
+                        let is_better = match (&best, exp) {
+                            (None, _) => true,
+                            (Some((_, _, Some(best_exp))), Some(this_exp)) => this_exp > *best_exp,
+                            (Some((_, _, None)), Some(_)) => true,
+                            _ => false,
+                        };
+                        if is_better {
+                            best = Some((key.to_string(), uid.to_string(), exp));
+                        }
+                    }
+                    if let Some((tok, uid, _)) = best {
+                        access_token = tok;
+                        user_id = uid;
+                    }
+                }
+            }
+        }
+    }
+
+    if access_token.is_empty() {
+        return Err(Failure::new(
+            Status::LoginRequired,
+            "Grok session was not found. Run 'grok login' to sign in or enter token in Account settings.",
+        ));
+    }
+
+    let client = crate::http::create_client()?;
+    let mut request = client
+        .get("https://cli-chat-proxy.grok.com/v1/billing?format=credits")
+        .header("Authorization", format!("Bearer {access_token}"))
+        .header("X-XAI-Token-Auth", "xai-grok-cli")
+        .header("x-grok-client-mode", "cli")
+        .header("x-grok-client-version", "1.0.0");
+    if !user_id.is_empty() {
+        request = request.header("x-userid", &user_id);
+    }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|e| Failure::new(Status::Offline, format!("Grok request failed: {e}")))?;
+
+    let status_code = response.status();
+    let headers = response.headers().clone();
+    crate::http::handle_http_status(status_code, &headers, "Grok")?;
+
+    let bytes = crate::http::read_bounded_bytes(response, 1_048_576).await?;
+    let value: Value = serde_json::from_slice(&bytes)
+        .map_err(|_| Failure::new(Status::Unavailable, "Grok returned invalid JSON."))?;
+
+    let limits = parsers::grok(&value);
+    if limits.is_empty() {
+        return Err(Failure::new(
+            Status::Unavailable,
+            "Grok billing returned no usage limits.",
+        ));
+    }
+
+    let mut snapshot = Snapshot::ready(&account.id, account.provider, limits);
+    snapshot.message = "Grok Build · shared credits".into();
     Ok(snapshot)
 }
 

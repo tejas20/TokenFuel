@@ -203,6 +203,57 @@ function getDemoLimits(provider: Provider, now: number): Limit[] {
           observedAt: new Date(now).toISOString(),
         },
       ];
+    case "grok":
+      return [
+        {
+          id: "grok:credits",
+          name: "Grok Credits",
+          product: "Grok",
+          scope: "account",
+          unit: "percent",
+          period: "monthly",
+          resetsAt: new Date(now + 2592000000).toISOString(),
+          used: null,
+          total: null,
+          remaining: null,
+          remainingPercent: 65,
+          unlimited: false,
+          source: "experimental",
+          observedAt: new Date(now).toISOString(),
+        },
+        {
+          id: "grok:on_demand",
+          name: "On-demand spending",
+          product: "Grok",
+          scope: "account",
+          unit: "USD",
+          period: "monthly",
+          resetsAt: new Date(now + 2592000000).toISOString(),
+          used: "12.50",
+          total: "50",
+          remaining: "37.50",
+          remainingPercent: 75,
+          unlimited: false,
+          source: "experimental",
+          observedAt: new Date(now).toISOString(),
+        },
+        {
+          id: "grok:prepaid_balance",
+          name: "Prepaid balance",
+          product: "Grok",
+          scope: "account",
+          unit: "USD",
+          period: "balance",
+          resetsAt: null,
+          used: null,
+          total: "25",
+          remaining: "25",
+          remainingPercent: null,
+          unlimited: false,
+          source: "experimental",
+          observedAt: new Date(now).toISOString(),
+        },
+      ];
     default:
       return [
         {

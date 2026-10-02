@@ -393,6 +393,106 @@ pub fn cursor(value: &Value) -> Vec<UsageLimit> {
     out
 }
 
+fn grok_cents(v: Option<&Value>) -> Option<Decimal> {
+    let v = v?;
+    let inner = if let Some(obj) = v.as_object() {
+        obj.get("val")?
+    } else {
+        v
+    };
+    let s = match inner {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => n.to_string(),
+        _ => return None,
+    };
+    let cents = Decimal::from_str(&s).ok()?;
+    Some(cents / Decimal::ONE_HUNDRED)
+}
+
+/// Grok billing and subscription status. Monetary values are in cents.
+/// Shared pools and product breakdowns (Build, Chat, API) are kept distinct.
+pub fn grok(value: &Value) -> Vec<UsageLimit> {
+    let mut out = Vec::new();
+    let config = value.get("config").unwrap_or(value);
+
+    let period_type = config
+        .pointer("/currentPeriod/type")
+        .or_else(|| config.pointer("/currentPeriod/periodType"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let period = if period_type.to_uppercase().contains("WEEKLY") {
+        "weekly"
+    } else if period_type.to_uppercase().contains("MONTHLY") {
+        "monthly"
+    } else {
+        "rolling"
+    };
+
+    let reset = timestamp(config.pointer("/currentPeriod/end"));
+
+    // 1. Shared credit usage percent
+    if let Some(used) = config
+        .get("creditUsagePercent")
+        .or_else(|| config.get("credit_usage_percent"))
+        .and_then(Value::as_f64)
+    {
+        if let Some(mut q) = UsageLimit::percentage(
+            "grok:credits",
+            "Grok Credits",
+            "Grok",
+            period,
+            used,
+            Source::Experimental,
+        ) {
+            q.resets_at = reset;
+            out.push(q);
+        }
+    }
+
+    // 2. On-demand usage / spending
+    let on_demand_used = grok_cents(config.get("onDemandUsed").or_else(|| config.get("on_demand_used")));
+    if let Some(used) = on_demand_used {
+        let total = grok_cents(config.get("onDemandCap").or_else(|| config.get("on_demand_cap")));
+        if let Ok(mut q) = UsageLimit::amounts(
+            "grok:on_demand",
+            "On-demand spending",
+            "Grok",
+            "USD",
+            period,
+            used,
+            total,
+            Source::Experimental,
+        ) {
+            q.resets_at = reset;
+            out.push(q);
+        }
+    }
+
+    // 3. Prepaid balance
+    if let Some(balance) = grok_cents(config.get("prepaidBalance").or_else(|| config.get("prepaid_balance"))) {
+        if balance > Decimal::ZERO {
+            if let Ok(mut q) = UsageLimit::amounts(
+                "grok:prepaid_balance",
+                "Prepaid balance",
+                "Grok",
+                "USD",
+                "balance",
+                Decimal::ZERO,
+                Some(balance),
+                Source::Experimental,
+            ) {
+                q.used = None;
+                q.remaining = Some(balance.normalize().to_string());
+                q.total = Some(balance.normalize().to_string());
+                q.remaining_percent = None;
+                out.push(q);
+            }
+        }
+    }
+
+    out
+}
+
 fn minor_amount(v: Option<&Value>) -> Option<Decimal> {
     let v = v?;
     let amount = decimal(v.get("amount_minor"))?;
@@ -562,5 +662,41 @@ mod tests {
         assert_eq!(q_legacy[0].id, "cursor:plan:total");
         assert_eq!(q_legacy[0].name, "Monthly plan");
         assert_eq!(q_legacy[0].remaining_percent, Some(60.0));
+    }
+
+    #[test]
+    fn grok_parses_shared_credits_on_demand_and_prepaid_balance() {
+        let text = include_str!("../tests/fixtures/grok.json");
+        let v: Value = serde_json::from_str(text).unwrap();
+        let q = grok(&v);
+        assert_eq!(q.len(), 3);
+
+        // Shared credits pool (64.5% remaining)
+        let credits = q.iter().find(|x| x.id == "grok:credits").unwrap();
+        assert_eq!(credits.name, "Grok Credits");
+        assert_eq!(credits.remaining_percent, Some(64.5));
+        assert_eq!(credits.period, "monthly");
+        assert_eq!(
+            credits.resets_at.unwrap().to_rfc3339(),
+            "2026-10-31T23:59:59+00:00"
+        );
+
+        // On-demand spending ($12.50 of $50.00 => 75% remaining)
+        let on_demand = q.iter().find(|x| x.id == "grok:on_demand").unwrap();
+        assert_eq!(on_demand.name, "On-demand spending");
+        assert_eq!(on_demand.used.as_deref(), Some("12.5"));
+        assert_eq!(on_demand.total.as_deref(), Some("50"));
+        assert_eq!(on_demand.remaining.as_deref(), Some("37.5"));
+        assert_eq!(on_demand.remaining_percent, Some(75.0));
+
+        // Prepaid balance ($25.00 remaining, no depleting percent)
+        let prepaid = q.iter().find(|x| x.id == "grok:prepaid_balance").unwrap();
+        assert_eq!(prepaid.name, "Prepaid balance");
+        assert_eq!(prepaid.used, None);
+        assert_eq!(prepaid.remaining.as_deref(), Some("25"));
+        assert_eq!(prepaid.remaining_percent, None);
+
+        // Product breakdowns (Build, Chat, API) must not become separate depleting meters
+        assert!(q.iter().all(|x| x.name != "Build" && x.name != "Chat" && x.name != "API"));
     }
 }
