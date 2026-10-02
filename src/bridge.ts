@@ -305,6 +305,41 @@ function getDemoLimits(provider: Provider, now: number): Limit[] {
           observedAt: new Date(now).toISOString(),
         },
       ];
+    case "antigravity":
+      return [
+        {
+          id: "antigravity:gemini-5h",
+          name: "Session 5h",
+          product: "Antigravity",
+          scope: "account",
+          unit: "percent",
+          period: "rolling",
+          resetsAt: new Date(now + 7800000).toISOString(),
+          used: null,
+          total: null,
+          remaining: null,
+          remainingPercent: 85,
+          unlimited: false,
+          source: "experimental",
+          observedAt: new Date(now).toISOString(),
+        },
+        {
+          id: "antigravity:gemini-weekly",
+          name: "Weekly Quota",
+          product: "Antigravity",
+          scope: "account",
+          unit: "percent",
+          period: "weekly",
+          resetsAt: new Date(now + 259200000).toISOString(),
+          used: null,
+          total: null,
+          remaining: null,
+          remainingPercent: 60,
+          unlimited: false,
+          source: "experimental",
+          observedAt: new Date(now).toISOString(),
+        },
+      ];
     default:
       return [
         {

@@ -57,6 +57,9 @@ pub async fn fetch(app: &AppHandle, account: &Account) -> Result<Snapshot, Failu
         Connection::CursorLocal if account.provider == Provider::Cursor => cursor(account).await,
         Connection::GrokCli if account.provider == Provider::Grok => grok(account).await,
         Connection::CopilotCli if account.provider == Provider::Copilot => copilot(account).await,
+        Connection::AntigravityLocal if account.provider == Provider::Antigravity => {
+            antigravity(account).await
+        }
         Connection::Browser => browser(app, account).await,
         Connection::GeminiWeb if account.provider == Provider::Gemini => {
             gemini_web(app, account).await
@@ -894,6 +897,418 @@ pub async fn copilot(account: &Account) -> Result<Snapshot, Failure> {
         Failure::new(
             Status::Unavailable,
             "Could not retrieve GitHub Copilot quota.",
+        )
+    }))
+}
+
+const ANTIGRAVITY_ENDPOINTS: &[&str] = &[
+    "https://daily-cloudcode-pa.googleapis.com",
+    "https://daily-cloudcode-pa.sandbox.googleapis.com",
+    "https://cloudcode-pa.googleapis.com",
+];
+
+struct AntigravityCreds {
+    access_token: String,
+    refresh_token: Option<String>,
+    expiry: Option<String>,
+}
+
+fn read_antigravity_token_data(account: &Account) -> Option<AntigravityCreds> {
+    // 1. Custom secret in Credential Manager
+    if account.has_custom_secret
+        && let Some(secret) = crate::credentials::read_account_secret(&account.id)
+    {
+        let secret = secret.trim();
+        if let Ok(v) = serde_json::from_str::<Value>(secret) {
+            let tok = v
+                .get("token")
+                .and_then(|t| t.get("access_token"))
+                .or_else(|| v.get("access_token"))
+                .or_else(|| v.get("token"))
+                .and_then(Value::as_str)
+                .map(|s| s.trim().to_string());
+            let ref_tok = v
+                .get("token")
+                .and_then(|t| t.get("refresh_token"))
+                .or_else(|| v.get("refresh_token"))
+                .and_then(Value::as_str)
+                .map(|s| s.trim().to_string());
+            let exp = v
+                .get("token")
+                .and_then(|t| t.get("expiry"))
+                .or_else(|| v.get("expiry"))
+                .and_then(Value::as_str)
+                .map(|s| s.trim().to_string());
+            if let Some(access_token) = tok {
+                return Some(AntigravityCreds {
+                    access_token,
+                    refresh_token: ref_tok,
+                    expiry: exp,
+                });
+            }
+        } else if !secret.is_empty() {
+            return Some(AntigravityCreds {
+                access_token: secret.to_string(),
+                refresh_token: None,
+                expiry: None,
+            });
+        }
+    }
+
+    // 2. Env vars
+    for var in [
+        "ANTIGRAVITY_TOKEN",
+        "ANTIGRAVITY_ACCESS_TOKEN",
+        "GOOGLE_ACCESS_TOKEN",
+        "GEMINI_CLI_TOKEN",
+    ] {
+        if let Ok(tok) = std::env::var(var) {
+            let tok = tok.trim();
+            if !tok.is_empty() {
+                return Some(AntigravityCreds {
+                    access_token: tok.to_string(),
+                    refresh_token: std::env::var("ANTIGRAVITY_REFRESH_TOKEN").ok(),
+                    expiry: None,
+                });
+            }
+        }
+    }
+
+    // 3. Stored Windows credential `gemini:antigravity`
+    if let Some(content) = crate::credentials::read_generic("gemini:antigravity")
+        && let Ok(v) = serde_json::from_str::<Value>(&content)
+    {
+        let tok = v
+            .get("token")
+            .and_then(|t| t.get("access_token"))
+            .or_else(|| v.get("access_token"))
+            .or_else(|| v.get("token"))
+            .and_then(Value::as_str)
+            .map(|s| s.trim().to_string());
+        let ref_tok = v
+            .get("token")
+            .and_then(|t| t.get("refresh_token"))
+            .or_else(|| v.get("refresh_token"))
+            .and_then(Value::as_str)
+            .map(|s| s.trim().to_string());
+        let exp = v
+            .get("token")
+            .and_then(|t| t.get("expiry"))
+            .or_else(|| v.get("expiry"))
+            .and_then(Value::as_str)
+            .map(|s| s.trim().to_string());
+        if let Some(access_token) = tok {
+            return Some(AntigravityCreds {
+                access_token,
+                refresh_token: ref_tok,
+                expiry: exp,
+            });
+        }
+    }
+
+    // 4. File credentials
+    let file_dirs = [
+        std::env::var_os("USERPROFILE")
+            .map(|u| PathBuf::from(u).join(".antigravity").join("auth.json")),
+        std::env::var_os("USERPROFILE")
+            .map(|u| PathBuf::from(u).join(".config").join("antigravity").join("auth.json")),
+        std::env::var_os("LOCALAPPDATA")
+            .map(|l| PathBuf::from(l).join("antigravity").join("auth.json")),
+    ];
+    for opt in file_dirs.into_iter().flatten() {
+        if opt.is_file()
+            && let Ok(content) = std::fs::read_to_string(&opt)
+            && let Ok(v) = serde_json::from_str::<Value>(&content)
+        {
+            let tok = v
+                .get("token")
+                .and_then(|t| t.get("access_token"))
+                .or_else(|| v.get("access_token"))
+                .or_else(|| v.get("token"))
+                .and_then(Value::as_str)
+                .map(|s| s.trim().to_string());
+            let ref_tok = v
+                .get("token")
+                .and_then(|t| t.get("refresh_token"))
+                .or_else(|| v.get("refresh_token"))
+                .and_then(Value::as_str)
+                .map(|s| s.trim().to_string());
+            let exp = v
+                .get("token")
+                .and_then(|t| t.get("expiry"))
+                .or_else(|| v.get("expiry"))
+                .and_then(Value::as_str)
+                .map(|s| s.trim().to_string());
+            if let Some(access_token) = tok {
+                return Some(AntigravityCreds {
+                    access_token,
+                    refresh_token: ref_tok,
+                    expiry: exp,
+                });
+            }
+        }
+    }
+
+    None
+}
+
+fn installed_antigravity_oauth_clients() -> Vec<(String, String)> {
+    let mut paths = Vec::new();
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        let local = PathBuf::from(local);
+        paths.push(local.join("Programs/Antigravity/resources/bin/language_server.exe"));
+        paths.push(local.join("agy/bin/agy.exe"));
+    }
+    if let Some(program_files) = std::env::var_os("ProgramFiles") {
+        paths.push(
+            PathBuf::from(program_files).join("Antigravity/resources/bin/language_server.exe"),
+        );
+    }
+    for path in paths {
+        if let Ok(bytes) = std::fs::read(&path) {
+            let clients = oauth_clients_from_bytes(&bytes);
+            if !clients.is_empty() {
+                return clients;
+            }
+        }
+    }
+    Vec::new()
+}
+
+fn oauth_clients_from_bytes(bytes: &[u8]) -> Vec<(String, String)> {
+    const CLIENT_ID_SUFFIX: &str = ".apps.googleusercontent.com";
+    const CLIENT_SECRET_PREFIX: &str = "GOCSPX-";
+    let mut ids = Vec::new();
+    let mut secrets = Vec::new();
+    for run in
+        bytes.split(|byte| !byte.is_ascii_alphanumeric() && !matches!(*byte, b'.' | b'_' | b'-'))
+    {
+        for (suffix_at, _) in run
+            .windows(CLIENT_ID_SUFFIX.len())
+            .enumerate()
+            .filter(|(_, part)| *part == CLIENT_ID_SUFFIX.as_bytes())
+        {
+            for (hyphen, byte) in run[..suffix_at].iter().enumerate() {
+                if *byte != b'-' {
+                    continue;
+                }
+                let mut start = hyphen;
+                while start > 0 && run[start - 1].is_ascii_digit() {
+                    start -= 1;
+                }
+                let client_hash = &run[hyphen + 1..suffix_at];
+                if hyphen - start < 10
+                    || !(20..=80).contains(&client_hash.len())
+                    || !client_hash
+                        .iter()
+                        .all(|byte| byte.is_ascii_alphanumeric() || matches!(*byte, b'_' | b'-'))
+                {
+                    continue;
+                }
+                if let Ok(client_id) =
+                    std::str::from_utf8(&run[start..suffix_at + CLIENT_ID_SUFFIX.len()])
+                    && !ids.iter().any(|existing| existing == client_id)
+                {
+                    ids.push(client_id.to_owned());
+                }
+            }
+        }
+        for (start, _) in run
+            .windows(CLIENT_SECRET_PREFIX.len())
+            .enumerate()
+            .filter(|(_, part)| *part == CLIENT_SECRET_PREFIX.as_bytes())
+        {
+            let Some(candidate) = run.get(start..start + 35) else {
+                continue;
+            };
+            if candidate
+                .iter()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(*byte, b'_' | b'-'))
+                && let Ok(secret) = std::str::from_utf8(candidate)
+                && !secrets.iter().any(|existing| existing == secret)
+            {
+                secrets.push(secret.to_owned());
+            }
+        }
+    }
+    ids.into_iter()
+        .flat_map(|id| {
+            secrets
+                .iter()
+                .cloned()
+                .map(move |secret| (id.clone(), secret))
+        })
+        .collect()
+}
+
+async fn refresh_antigravity_token(client: &reqwest::Client, refresh_token: &str) -> Option<String> {
+    let clients = installed_antigravity_oauth_clients();
+    for (client_id, client_secret) in clients {
+        let params = [
+            ("client_id", client_id.as_str()),
+            ("client_secret", client_secret.as_str()),
+            ("refresh_token", refresh_token),
+            ("grant_type", "refresh_token"),
+        ];
+        if let Ok(res) = client
+            .post("https://oauth2.googleapis.com/token")
+            .form(&params)
+            .send()
+            .await
+            && res.status().is_success()
+            && let Ok(v) = res.json::<Value>().await
+            && let Some(tok) = v.get("access_token").and_then(Value::as_str)
+        {
+            return Some(tok.trim().to_string());
+        }
+    }
+    None
+}
+
+pub async fn antigravity(account: &Account) -> Result<Snapshot, Failure> {
+    let creds = read_antigravity_token_data(account).ok_or_else(|| {
+        Failure::new(
+            Status::LoginRequired,
+            "Google Antigravity credentials were not found. Sign in via Antigravity or provide an access token in Account settings.",
+        )
+    })?;
+
+    let client = crate::http::create_client()?;
+
+    let is_expired = creds.expiry.as_deref().and_then(|s| {
+        chrono::DateTime::parse_from_rfc3339(s).ok()
+    }).is_some_and(|exp| exp.with_timezone(&Utc) <= Utc::now() + chrono::Duration::seconds(60));
+
+    let mut token = creds.access_token;
+    if (token.is_empty() || is_expired)
+        && let Some(ref ref_tok) = creds.refresh_token
+        && let Some(new_tok) = refresh_antigravity_token(&client, ref_tok).await
+    {
+        token = new_tok;
+    }
+
+    if token.is_empty() {
+        return Err(Failure::new(
+            Status::LoginRequired,
+            "Google Antigravity access token is missing or expired. Sign in via Antigravity or update settings.",
+        ));
+    }
+
+    let mut auth_failed = false;
+    let mut last_failure: Option<Failure> = None;
+
+    for base_url in ANTIGRAVITY_ENDPOINTS {
+        // Step 1: Discover Project ID
+        let load_res = client
+            .post(format!("{base_url}/v1internal:loadCodeAssist"))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+            .header("User-Agent", "antigravity")
+            .json(&serde_json::json!({
+                "metadata": {
+                    "ideType": "ANTIGRAVITY"
+                }
+            }))
+            .send()
+            .await;
+
+        let load_resp = match load_res {
+            Ok(r) => r,
+            Err(e) => {
+                last_failure = Some(Failure::new(Status::Offline, format!("Antigravity connection failed: {e}")));
+                continue;
+            }
+        };
+
+        let load_status = load_resp.status();
+        if load_status == reqwest::StatusCode::UNAUTHORIZED || load_status == reqwest::StatusCode::FORBIDDEN {
+            auth_failed = true;
+            continue;
+        }
+
+        let project_id = if load_status.is_success() {
+            let bytes = crate::http::read_bounded_bytes(load_resp, 524_288).await.ok();
+            bytes.and_then(|b| serde_json::from_slice::<Value>(&b).ok()).and_then(|v| {
+                v.get("cloudaicompanionProject")
+                    .or_else(|| v.get("project"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+        } else {
+            None
+        };
+
+        // Step 2: Retrieve User Quota Summary (if project discovered)
+        if let Some(ref proj) = project_id {
+            let summary_res = client
+                .post(format!("{base_url}/v1internal:retrieveUserQuotaSummary"))
+                .header("Authorization", format!("Bearer {token}"))
+                .header("Content-Type", "application/json")
+                .header("User-Agent", "antigravity")
+                .json(&serde_json::json!({ "project": proj }))
+                .send()
+                .await;
+
+            if let Ok(summary_resp) = summary_res
+                && summary_resp.status().is_success()
+                && let Ok(bytes) = crate::http::read_bounded_bytes(summary_resp, 1_048_576).await
+                && let Ok(v) = serde_json::from_slice::<Value>(&bytes)
+            {
+                let limits = parsers::antigravity(&v);
+                if !limits.is_empty() {
+                    let mut snapshot = Snapshot::ready(&account.id, account.provider, limits);
+                    snapshot.message = format!("Google Antigravity · {proj}");
+                    return Ok(snapshot);
+                }
+            }
+        }
+
+        // Step 3: Fallback to fetchAvailableModels
+        let body = match &project_id {
+            Some(p) => serde_json::json!({ "project": p }),
+            None => serde_json::json!({}),
+        };
+
+        let models_res = client
+            .post(format!("{base_url}/v1internal:fetchAvailableModels"))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+            .header("User-Agent", "antigravity")
+            .json(&body)
+            .send()
+            .await;
+
+        if let Ok(models_resp) = models_res {
+            let status = models_resp.status();
+            if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+                auth_failed = true;
+                continue;
+            }
+            if status.is_success()
+                && let Ok(bytes) = crate::http::read_bounded_bytes(models_resp, 1_048_576).await
+                && let Ok(v) = serde_json::from_slice::<Value>(&bytes)
+            {
+                let limits = parsers::antigravity(&v);
+                if !limits.is_empty() {
+                    let mut snapshot = Snapshot::ready(&account.id, account.provider, limits);
+                    snapshot.message = "Google Antigravity · models".into();
+                    return Ok(snapshot);
+                }
+            }
+        }
+    }
+
+    if auth_failed {
+        return Err(Failure::new(
+            Status::LoginRequired,
+            "Google Antigravity authentication rejected or expired. Sign in to Antigravity or update settings.",
+        ));
+    }
+
+    Err(last_failure.unwrap_or_else(|| {
+        Failure::new(
+            Status::Unavailable,
+            "Google Antigravity endpoints returned no available quota pools.",
         )
     }))
 }

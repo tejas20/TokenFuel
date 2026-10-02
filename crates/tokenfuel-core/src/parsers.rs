@@ -620,6 +620,159 @@ pub fn copilot(value: &Value) -> Vec<UsageLimit> {
     out
 }
 
+/// Google Antigravity quota and model limits.
+/// Supports both retrieveUserQuotaSummary groups/buckets and fetchAvailableModels models.
+pub fn antigravity(value: &Value) -> Vec<UsageLimit> {
+    let mut out = Vec::new();
+    let mut seen_ids = std::collections::HashSet::new();
+
+    // 1. Quota Summary Groups
+    let groups = value
+        .get("groups")
+        .or_else(|| value.pointer("/summary/groups"))
+        .and_then(Value::as_array);
+
+    if let Some(groups) = groups {
+        for group in groups {
+            let group_display = group
+                .get("displayName")
+                .or_else(|| group.get("display_name"))
+                .and_then(Value::as_str)
+                .unwrap_or("Antigravity");
+
+            if let Some(buckets) = group.get("buckets").and_then(Value::as_array) {
+                for bucket in buckets {
+                    let bucket_id = bucket
+                        .get("bucketId")
+                        .or_else(|| bucket.get("bucket_id"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    let window = bucket
+                        .get("window")
+                        .and_then(Value::as_str)
+                        .unwrap_or("rolling");
+                    let period = if window.eq_ignore_ascii_case("5h") {
+                        "rolling"
+                    } else if window.eq_ignore_ascii_case("weekly") {
+                        "weekly"
+                    } else if window.eq_ignore_ascii_case("monthly") {
+                        "monthly"
+                    } else {
+                        "rolling"
+                    };
+                    let bucket_display = bucket
+                        .get("displayName")
+                        .or_else(|| bucket.get("display_name"))
+                        .and_then(Value::as_str);
+
+                    let name = if let Some(bd) = bucket_display {
+                        bd.to_string()
+                    } else if !bucket_id.is_empty() {
+                        bucket_id.replace('-', " ")
+                    } else {
+                        format!("{group_display} {window}")
+                    };
+
+                    let pool_id = if !bucket_id.is_empty() {
+                        format!("antigravity:{bucket_id}")
+                    } else {
+                        format!(
+                            "antigravity:{}:{}",
+                            group_display.to_lowercase().replace(' ', "_"),
+                            window
+                        )
+                    };
+
+                    if !seen_ids.insert(pool_id.clone()) {
+                        continue;
+                    }
+
+                    let remaining_fraction = bucket
+                        .get("remainingFraction")
+                        .or_else(|| bucket.get("remaining_fraction"))
+                        .and_then(Value::as_f64);
+
+                    if let Some(rf) = remaining_fraction
+                        && let Some(mut q) = UsageLimit::percentage(
+                            &pool_id,
+                            &name,
+                            "Antigravity",
+                            period,
+                            100.0 - (rf.clamp(0.0, 1.0) * 100.0).clamp(0.0, 100.0),
+                            Source::Experimental,
+                        )
+                    {
+                        q.remaining_percent = Some((rf.clamp(0.0, 1.0) * 100.0).clamp(0.0, 100.0));
+                        q.resets_at = timestamp(
+                            bucket
+                                .get("resetTime")
+                                .or_else(|| bucket.get("reset_time")),
+                        );
+                        out.push(q);
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Models fallback if no quota summary buckets were found
+    if out.is_empty() {
+        let models = value
+            .get("models")
+            .and_then(|m| m.get("models").or(Some(m)))
+            .or_else(|| value.pointer("/models/models"))
+            .and_then(Value::as_object);
+
+        if let Some(models) = models {
+            for (model_name, info) in models {
+                let is_display_model = model_name.starts_with("gemini")
+                    || model_name.starts_with("claude")
+                    || model_name.starts_with("gpt")
+                    || model_name.starts_with("image")
+                    || model_name.starts_with("imagen");
+                if !is_display_model {
+                    continue;
+                }
+
+                let quota_info = info
+                    .get("quotaInfo")
+                    .or_else(|| info.get("quota_info"));
+                let remaining_fraction = quota_info
+                    .and_then(|q| q.get("remainingFraction").or_else(|| q.get("remaining_fraction")))
+                    .and_then(Value::as_f64);
+
+                if let Some(rf) = remaining_fraction {
+                    let pool_id = format!("antigravity:model:{model_name}");
+                    if !seen_ids.insert(pool_id.clone()) {
+                        continue;
+                    }
+
+                    let remaining_pct = (rf.clamp(0.0, 1.0) * 100.0).clamp(0.0, 100.0);
+                    let used_pct = 100.0 - remaining_pct;
+
+                    if let Some(mut q) = UsageLimit::percentage(
+                        &pool_id,
+                        model_name,
+                        "Antigravity",
+                        "rolling",
+                        used_pct,
+                        Source::Experimental,
+                    ) {
+                        q.remaining_percent = Some(remaining_pct);
+                        q.resets_at = timestamp(
+                            quota_info
+                                .and_then(|q| q.get("resetTime").or_else(|| q.get("reset_time"))),
+                        );
+                        out.push(q);
+                    }
+                }
+            }
+        }
+    }
+
+    out
+}
+
 fn minor_amount(v: Option<&Value>) -> Option<Decimal> {
     let v = v?;
     let amount = decimal(v.get("amount_minor"))?;
@@ -864,5 +1017,48 @@ mod tests {
         assert_eq!(completions.remaining_percent, Some(75.0));
         assert_eq!(completions.unit, "completions");
         assert!(!completions.unlimited);
+    }
+
+    #[test]
+    fn antigravity_parses_groups_and_fallback_models() {
+        let text = include_str!("../tests/fixtures/antigravity.json");
+        let v: Value = serde_json::from_str(text).unwrap();
+        let q = antigravity(&v);
+        assert_eq!(q.len(), 2);
+
+        let session = q.iter().find(|x| x.id == "antigravity:gemini-5h").unwrap();
+        assert_eq!(session.name, "Session 5h");
+        assert_eq!(session.period, "rolling");
+        assert_eq!(session.remaining_percent, Some(85.0));
+        assert_eq!(
+            session.resets_at.unwrap().to_rfc3339(),
+            "2026-10-02T20:15:00+00:00"
+        );
+
+        let weekly = q.iter().find(|x| x.id == "antigravity:gemini-weekly").unwrap();
+        assert_eq!(weekly.name, "Weekly Quota");
+        assert_eq!(weekly.period, "weekly");
+        assert_eq!(weekly.remaining_percent, Some(60.0));
+        assert_eq!(
+            weekly.resets_at.unwrap().to_rfc3339(),
+            "2026-10-08T00:00:00+00:00"
+        );
+
+        // Standalone models fallback test
+        let models_text = r#"{
+            "models": {
+                "gemini-2.5-pro": {
+                    "quotaInfo": {
+                        "remainingFraction": 0.72,
+                        "resetTime": "2026-10-02T21:00:00Z"
+                    }
+                }
+            }
+        }"#;
+        let mv: Value = serde_json::from_str(models_text).unwrap();
+        let mq = antigravity(&mv);
+        assert_eq!(mq.len(), 1);
+        assert_eq!(mq[0].id, "antigravity:model:gemini-2.5-pro");
+        assert_eq!(mq[0].remaining_percent, Some(72.0));
     }
 }
