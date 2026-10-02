@@ -2,6 +2,18 @@
 
 A Windows desktop widget for remaining AI subscription allowances. Private development preview; MIT licensed. The compact soft-glass widget switches between Slim Strip and Mini Rings. Each connected account shows all reported quota windows separately, including weekly and monthly allowances when available, with remaining values and reset countdowns. Pinning moves a quota first without hiding other pools. Only enabled connections appear; one Connect tile stays visible when none are enabled. It includes separate account/workspace pools, tray controls, remembered position, optional startup and threshold alerts.
 
+## Widget preview
+
+**Compact bars** — separate remaining allowances and reset countdowns.
+
+![TokenFuel compact bar view showing a monthly balance and separate five-hour and weekly quotas](docs/images/widget-bars.png)
+
+**Circular gauges** — remaining percentages centred inside each quota's gauge.
+
+![TokenFuel circular gauge view showing separate monthly, five-hour and weekly allowances](docs/images/widget-rings.png)
+
+Screenshots show the current UI with fictional sample data. The widget displays only connected accounts and quota windows reported by the selected source; these examples do not certify live support for every subscription tier.
+
 ## Install and run
 
 **Recommended: download the Windows installer.** No Git, GitHub CLI, Rust, Node, pnpm or Python is needed to run the prebuilt app.
