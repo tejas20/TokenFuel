@@ -2,6 +2,12 @@
 [CmdletBinding()]
 param([switch]$DownloadOnly)
 $ErrorActionPreference = 'Stop'
+function Get-FuelHash([string]$Path) {
+    $fuelHasher = [Security.Cryptography.SHA256]::Create()
+    $fuelStream = [IO.File]::OpenRead($Path)
+    try { return ([BitConverter]::ToString($fuelHasher.ComputeHash($fuelStream))).Replace('-','') }
+    finally { $fuelStream.Dispose(); $fuelHasher.Dispose() }
+}
 $fuelVersion = 'v0.1.0-review.1'
 $fuelRepo = 'tejas20/TokenFuel'
 $fuelZip = 'TokenFuel_0.1.0_x64-portable.zip'
@@ -13,7 +19,7 @@ $fuelExe = Join-Path $fuelInstall 'TokenFuel.exe'
 $fuelManifest = Join-Path $fuelInstall 'executable.sha256'
 $fuelCached = (Test-Path -LiteralPath $fuelExe) -and (Test-Path -LiteralPath $fuelManifest)
 if ($fuelCached) {
-    $fuelCached = (Get-FileHash -LiteralPath $fuelExe -Algorithm SHA256).Hash -eq (Get-Content -LiteralPath $fuelManifest -Raw).Trim()
+    $fuelCached = (Get-FuelHash $fuelExe) -eq (Get-Content -LiteralPath $fuelManifest -Raw).Trim()
 }
 if (-not $fuelCached) {
     $fuelGhCommand = Get-Command gh -ErrorAction SilentlyContinue
@@ -32,7 +38,7 @@ if (-not $fuelCached) {
         if ($fuelChecksums.Count -ne 1) { throw 'The release checksum is missing or ambiguous; nothing was launched.' }
         $fuelExpected = [Regex]::Match($fuelChecksums[0], $fuelPattern).Groups[1].Value
         $fuelArchive = Join-Path $fuelStage $fuelZip
-        if ((Get-FileHash -LiteralPath $fuelArchive -Algorithm SHA256).Hash -ne $fuelExpected) { throw 'Download checksum mismatch; nothing was launched.' }
+        if ((Get-FuelHash $fuelArchive) -ne $fuelExpected) { throw 'Download checksum mismatch; nothing was launched.' }
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $fuelEntries = [IO.Compression.ZipFile]::OpenRead($fuelArchive)
         try {
@@ -43,7 +49,7 @@ if (-not $fuelCached) {
         New-Item -ItemType Directory -Force -Path $fuelInstall | Out-Null
         Expand-Archive -LiteralPath $fuelArchive -DestinationPath $fuelInstall -Force
         if (-not (Test-Path -LiteralPath $fuelExe)) { throw 'The release did not contain TokenFuel.exe.' }
-        (Get-FileHash -LiteralPath $fuelExe -Algorithm SHA256).Hash | Set-Content -LiteralPath $fuelManifest
+        Get-FuelHash $fuelExe | Set-Content -LiteralPath $fuelManifest
     } finally {
         # Only remove this invocation's GUID-named temporary directory, after validating its boundary.
         $fuelResolved = [IO.Path]::GetFullPath($fuelStage)
