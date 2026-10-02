@@ -316,6 +316,83 @@ pub fn opencode(value: &Value) -> Vec<UsageLimit> {
     out
 }
 
+/// Cursor usage summary. Maps component pools to Cursor Models and API models.
+/// Avoids duplicating totalPercentUsed when component pools are present.
+pub fn cursor(value: &Value) -> Vec<UsageLimit> {
+    let mut out = Vec::new();
+    let reset = timestamp(
+        value
+            .get("billingCycleEnd")
+            .or_else(|| value.get("billing_cycle_end")),
+    );
+    let plan = value
+        .pointer("/individualUsage/plan")
+        .or_else(|| value.get("plan"))
+        .or_else(|| value.get("individualUsage"))
+        .unwrap_or(value);
+
+    let auto = plan
+        .get("autoPercentUsed")
+        .or_else(|| plan.get("auto_percent_used"))
+        .and_then(Value::as_f64);
+    let api = plan
+        .get("apiPercentUsed")
+        .or_else(|| plan.get("api_percent_used"))
+        .and_then(Value::as_f64);
+    let total = plan
+        .get("totalPercentUsed")
+        .or_else(|| plan.get("total_percent_used"))
+        .and_then(Value::as_f64);
+
+    let has_components = auto.is_some() || api.is_some();
+
+    if let Some(used) = auto {
+        if let Some(mut q) = UsageLimit::percentage(
+            "cursor:plan:auto",
+            "Cursor Models",
+            "Cursor",
+            "monthly",
+            used,
+            Source::Experimental,
+        ) {
+            q.resets_at = reset;
+            out.push(q);
+        }
+    }
+
+    if let Some(used) = api {
+        if let Some(mut q) = UsageLimit::percentage(
+            "cursor:plan:api",
+            "API models",
+            "Cursor",
+            "monthly",
+            used,
+            Source::Experimental,
+        ) {
+            q.resets_at = reset;
+            out.push(q);
+        }
+    }
+
+    if !has_components {
+        if let Some(used) = total {
+            if let Some(mut q) = UsageLimit::percentage(
+                "cursor:plan:total",
+                "Monthly plan",
+                "Cursor",
+                "monthly",
+                used,
+                Source::Experimental,
+            ) {
+                q.resets_at = reset;
+                out.push(q);
+            }
+        }
+    }
+
+    out
+}
+
 fn minor_amount(v: Option<&Value>) -> Option<Decimal> {
     let v = v?;
     let amount = decimal(v.get("amount_minor"))?;
@@ -447,5 +524,43 @@ mod tests {
             monthly.resets_at.unwrap().to_rfc3339(),
             "2026-11-01T00:00:00+00:00"
         );
+    }
+
+    #[test]
+    fn cursor_parses_component_pools_without_duplicating_total() {
+        let text = include_str!("../tests/fixtures/cursor.json");
+        let v: Value = serde_json::from_str(text).unwrap();
+        let q = cursor(&v);
+        assert_eq!(q.len(), 2);
+
+        let auto = q.iter().find(|x| x.id == "cursor:plan:auto").unwrap();
+        assert_eq!(auto.name, "Cursor Models");
+        assert_eq!(auto.remaining_percent, Some(57.5));
+        assert_eq!(
+            auto.resets_at.unwrap().to_rfc3339(),
+            "2026-10-31T23:59:59+00:00"
+        );
+
+        let api = q.iter().find(|x| x.id == "cursor:plan:api").unwrap();
+        assert_eq!(api.name, "API models");
+        assert_eq!(api.remaining_percent, Some(85.0));
+
+        // totalPercentUsed is not duplicated
+        assert!(q.iter().all(|x| x.id != "cursor:plan:total"));
+
+        // Fallback test: legacy or unified plan with only totalPercentUsed
+        let legacy = json!({
+            "billingCycleEnd": "2026-10-31T23:59:59.000Z",
+            "individualUsage": {
+                "plan": {
+                    "totalPercentUsed": 40.0
+                }
+            }
+        });
+        let q_legacy = cursor(&legacy);
+        assert_eq!(q_legacy.len(), 1);
+        assert_eq!(q_legacy[0].id, "cursor:plan:total");
+        assert_eq!(q_legacy[0].name, "Monthly plan");
+        assert_eq!(q_legacy[0].remaining_percent, Some(60.0));
     }
 }

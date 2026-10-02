@@ -168,6 +168,41 @@ function getDemoLimits(provider: Provider, now: number): Limit[] {
           observedAt: new Date(now).toISOString(),
         },
       ];
+    case "cursor":
+      return [
+        {
+          id: "cursor:plan:auto",
+          name: "Cursor Models",
+          product: "Cursor",
+          scope: "account",
+          unit: "percent",
+          period: "monthly",
+          resetsAt: new Date(now + 2592000000).toISOString(),
+          used: null,
+          total: null,
+          remaining: null,
+          remainingPercent: 58,
+          unlimited: false,
+          source: "experimental",
+          observedAt: new Date(now).toISOString(),
+        },
+        {
+          id: "cursor:plan:api",
+          name: "API models",
+          product: "Cursor",
+          scope: "account",
+          unit: "percent",
+          period: "monthly",
+          resetsAt: new Date(now + 2592000000).toISOString(),
+          used: null,
+          total: null,
+          remaining: null,
+          remainingPercent: 85,
+          unlimited: false,
+          source: "experimental",
+          observedAt: new Date(now).toISOString(),
+        },
+      ];
     default:
       return [
         {

@@ -54,6 +54,7 @@ pub async fn fetch(app: &AppHandle, account: &Account) -> Result<Snapshot, Failu
         Connection::OpencodeGo if account.provider == Provider::Opencode => {
             opencode(account).await
         }
+        Connection::CursorLocal if account.provider == Provider::Cursor => cursor(account).await,
         Connection::Browser => browser(app, account).await,
         Connection::GeminiWeb if account.provider == Provider::Gemini => {
             gemini_web(app, account).await
@@ -438,6 +439,127 @@ pub async fn opencode(account: &Account) -> Result<Snapshot, Failure> {
 
     let mut snapshot = Snapshot::ready(&account.id, account.provider, limits);
     snapshot.message = format!("OpenCode Go · Org {workspace_id}");
+    Ok(snapshot)
+}
+
+fn extract_cursor_user_id(jwt: &str) -> Option<String> {
+    let payload = jwt.split('.').nth(1)?;
+    use base64::Engine;
+    let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload.trim_end_matches('='))
+        .or_else(|_| base64::engine::general_purpose::STANDARD.decode(payload))
+        .ok()?;
+    let json: Value = serde_json::from_slice(&decoded).ok()?;
+    let subject = json.get("sub")?.as_str()?;
+    Some(
+        subject
+            .rsplit_once('|')
+            .map(|(_, id)| id.to_string())
+            .unwrap_or_else(|| subject.to_string()),
+    )
+}
+
+fn cursor_cookie_from_access_token(access_token: &str) -> Option<String> {
+    let user_id = extract_cursor_user_id(access_token)?;
+    Some(format!("{user_id}%3A%3A{access_token}"))
+}
+
+fn normalize_cursor_session_cookie(token: &str) -> Option<String> {
+    let token = token.trim();
+    if token.is_empty() || token.bytes().any(|b| matches!(b, b'\r' | b'\n')) {
+        return None;
+    }
+    let token = token
+        .strip_prefix("WorkosCursorSessionToken=")
+        .unwrap_or(token)
+        .trim();
+    if token.contains("%3A%3A") {
+        Some(token.to_string())
+    } else if token.contains("::") {
+        Some(token.replace("::", "%3A%3A"))
+    } else {
+        cursor_cookie_from_access_token(token).or_else(|| Some(token.to_string()))
+    }
+}
+
+fn cursor_state_db_path(account: &Account) -> Option<PathBuf> {
+    if let Some(ref p) = account.credential_path {
+        let path = PathBuf::from(p);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    let app_data = std::env::var_os("APPDATA")?;
+    let path = PathBuf::from(app_data)
+        .join("Cursor")
+        .join("User")
+        .join("globalStorage")
+        .join("state.vscdb");
+    path.is_file().then_some(path)
+}
+
+pub async fn cursor(account: &Account) -> Result<Snapshot, Failure> {
+    let mut session_cookie = None;
+
+    if account.has_custom_secret {
+        if let Some(secret) = crate::credentials::read_account_secret(&account.id) {
+            session_cookie = normalize_cursor_session_cookie(&secret);
+        }
+    }
+
+    if session_cookie.is_none() {
+        if let Ok(token) = std::env::var("CURSOR_SESSION_TOKEN") {
+            session_cookie = normalize_cursor_session_cookie(&token);
+        }
+    }
+
+    if session_cookie.is_none() {
+        if let Some(path) = cursor_state_db_path(account) {
+            if let Ok(Some(access_token)) = crate::winsqlite::query_optional_text(
+                &path,
+                "SELECT value FROM ItemTable WHERE key = ?",
+                "cursorAuth/accessToken",
+            ) {
+                session_cookie = cursor_cookie_from_access_token(&access_token);
+            }
+        }
+    }
+
+    let cookie = session_cookie.ok_or_else(|| {
+        Failure::new(
+            Status::LoginRequired,
+            "Cursor session was not found. Sign in to Cursor, set CURSOR_SESSION_TOKEN, or enter credentials in Account settings.",
+        )
+    })?;
+
+    let client = crate::http::create_client()?;
+    let cookie_header = format!("WorkosCursorSessionToken={cookie}");
+    let response = client
+        .get("https://cursor.com/api/usage-summary")
+        .header("Cookie", &cookie_header)
+        .header("User-Agent", "Mozilla/5.0")
+        .send()
+        .await
+        .map_err(|e| Failure::new(Status::Offline, format!("Cursor request failed: {e}")))?;
+
+    let status_code = response.status();
+    let headers = response.headers().clone();
+    crate::http::handle_http_status(status_code, &headers, "Cursor")?;
+
+    let bytes = crate::http::read_bounded_bytes(response, 1_048_576).await?;
+    let value: Value = serde_json::from_slice(&bytes)
+        .map_err(|_| Failure::new(Status::Unavailable, "Cursor returned invalid JSON."))?;
+
+    let limits = parsers::cursor(&value);
+    if limits.is_empty() {
+        return Err(Failure::new(
+            Status::Unavailable,
+            "Cursor usage summary returned no plan usage.",
+        ));
+    }
+
+    let mut snapshot = Snapshot::ready(&account.id, account.provider, limits);
+    snapshot.message = "Cursor Models · monthly allowance".into();
     Ok(snapshot)
 }
 
