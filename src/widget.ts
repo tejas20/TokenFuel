@@ -1,4 +1,4 @@
-import type { Account, Limit, Settings, Snapshot } from "./types";
+import type { Account, Limit, Provider, Settings, Snapshot } from "./types";
 
 export const emptyAccount: Account = {
   id: "unconfigured",
@@ -28,9 +28,18 @@ export function visibleAccounts(accounts: Account[]): Account[] {
 
 export function accountName(a: Account): string {
   if (a.provider === "openai" && a.connection === "codexCli") return "Codex";
-  return { openai: "OpenAI", claude: "Claude", gemini: "Gemini", grok: "Grok" }[
-    a.provider
-  ];
+  const names: Record<Provider, string> = {
+    openai: "OpenAI",
+    claude: "Claude",
+    gemini: "Gemini",
+    grok: "Grok",
+    opencode: "OpenCode Go",
+    cursor: "Cursor",
+    copilot: "Copilot",
+    antigravity: "Antigravity",
+    unknown: "Unknown",
+  };
+  return names[a.provider] ?? "Account";
 }
 
 // Pinning controls prominence, not visibility: every reported pool stays separate.

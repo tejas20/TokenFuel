@@ -194,3 +194,32 @@ test("expired login keeps all cached windows and disconnected accounts do not ex
   expect(disconnected.body.textContent).toContain("Connect");
   expect(disconnected.body.textContent).not.toContain("84%");
 });
+
+test.each(["bars", "rings"] as const)(
+  "%s spending without a denominator keeps its limit unknown",
+  (view) => {
+    const doc = render(
+      [
+        limit("spend", {
+          name: "On-demand spend",
+          period: "monthly",
+          unit: "USD",
+          used: "42.50",
+          total: null,
+          remaining: null,
+          remainingPercent: null,
+        }),
+      ],
+      {},
+      view,
+    );
+    expect(doc.body.textContent).toContain(
+      "42.50 USD used (limit not reported)",
+    );
+    expect(
+      doc.querySelector(".quota-window")?.getAttribute("aria-label"),
+    ).toContain("42.50 USD used (limit not reported)");
+    expect(doc.body.textContent).not.toContain("uncapped");
+    expect(doc.body.textContent).not.toContain("No reading");
+  },
+);

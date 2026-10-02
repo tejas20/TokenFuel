@@ -1,0 +1,30 @@
+{
+  "onDemandEnabled": true,
+  "subscriptionTier": "SuperGrok",
+  "config": {
+    "creditUsagePercent": 35.5,
+    "currentPeriod": {
+      "type": "USAGE_PERIOD_TYPE_MONTHLY",
+      "end": "2026-10-31T23:59:59Z"
+    },
+    "prepaidBalance": {
+      "val": 2500
+    },
+    "onDemandCap": "5000",
+    "onDemandUsed": 1250,
+    "productUsage": [
+      {
+        "product": "Build",
+        "usagePercent": 20.0
+      },
+      {
+        "product": "Chat",
+        "usagePercent": 10.0
+      },
+      {
+        "product": "API",
+        "usagePercent": 5.5
+      }
+    ]
+  }
+}

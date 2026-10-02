@@ -22,11 +22,16 @@ import { accountName, visibleAccounts, widgetWidth } from "./widget";
 import type { Account, Config, Limit, Provider } from "./types";
 import "./style.css";
 import "./compact.css";
-const names = {
+const names: Record<Provider, string> = {
   claude: "Claude",
   openai: "OpenAI",
   gemini: "Gemini",
   grok: "Grok",
+  opencode: "OpenCode Go",
+  cursor: "Cursor",
+  copilot: "Copilot",
+  antigravity: "Antigravity",
+  unknown: "Unknown",
 };
 export default function App() {
   const [config, setConfig] = useState<Config>(initial),
@@ -396,7 +401,8 @@ function AccountEditor({
   run: (n: string, args?: Record<string, unknown>) => Promise<boolean>;
 }) {
   const [draft, setDraft] = useState(a),
-    [manual, setManual] = useState(false);
+    [manual, setManual] = useState(false),
+    [secretInput, setSecretInput] = useState("");
   useEffect(() => setDraft(a), [a.id, a.revision]);
   return (
     <div className="account-editor">
@@ -405,21 +411,43 @@ function AccountEditor({
         <select
           aria-label="Provider"
           value={draft.provider}
-          onChange={(e) =>
+          onChange={(e) => {
+            const prov = e.target.value as Provider;
             setDraft({
               ...draft,
-              provider: e.target.value as Provider,
+              provider: prov,
               connection:
-                e.target.value === "openai"
+                prov === "openai"
                   ? "codexCli"
-                  : e.target.value === "claude"
+                  : prov === "claude"
                     ? "claudeCli"
-                    : "browser",
+                    : prov === "opencode"
+                      ? "opencodeGo"
+                      : prov === "cursor"
+                        ? "cursorLocal"
+                        : prov === "grok"
+                          ? "grokCli"
+                          : prov === "copilot"
+                            ? "copilotCli"
+                            : prov === "antigravity"
+                              ? "antigravityLocal"
+                              : "browser",
               enabled: false,
-            })
-          }
+            });
+          }}
         >
-          {(["claude", "openai", "gemini"] as const).map((p) => (
+          {(
+            [
+              "claude",
+              "openai",
+              "gemini",
+              "grok",
+              "opencode",
+              "cursor",
+              "copilot",
+              "antigravity",
+            ] as const
+          ).map((p) => (
             <option key={p} value={p}>
               {names[p]}
             </option>
@@ -469,6 +497,21 @@ function AccountEditor({
               Gemini live Usage view · experimental
             </option>
           )}
+          {draft.provider === "opencode" && (
+            <option value="opencodeGo">OpenCode Go status · experimental</option>
+          )}
+          {draft.provider === "cursor" && (
+            <option value="cursorLocal">Cursor local session · experimental</option>
+          )}
+          {draft.provider === "grok" && (
+            <option value="grokCli">Grok CLI auth · experimental</option>
+          )}
+          {draft.provider === "copilot" && (
+            <option value="copilotCli">GitHub Copilot · documented</option>
+          )}
+          {draft.provider === "antigravity" && (
+            <option value="antigravityLocal">Google Antigravity · experimental</option>
+          )}
           <option value="browser">Usage view · experimental capture</option>
           <option value="manual">Manual snapshot</option>
         </select>
@@ -482,12 +525,18 @@ function AccountEditor({
               }
             />
             Allow connection{" "}
-            {draft.connection.endsWith("Cli") ? "and local session access" : ""}
+            {draft.connection.endsWith("Cli") || draft.connection.endsWith("Local")
+              ? "and local session access"
+              : ""}
           </label>
         )}
         {(draft.connection === "browser" ||
           draft.connection === "geminiWeb" ||
-          draft.connection === "claudeCli") && (
+          draft.connection === "claudeCli" ||
+          draft.connection === "opencodeGo" ||
+          draft.connection === "cursorLocal" ||
+          draft.connection === "grokCli" ||
+          draft.connection === "antigravityLocal") && (
           <label>
             <input
               type="checkbox"
@@ -508,6 +557,46 @@ function AccountEditor({
         >
           Save
         </button>
+      </div>
+      <div className="edit-row">
+        {draft.hasCustomSecret ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.85em" }}>
+            <span>🔒 Secret saved in Credential Manager</span>
+            <button
+              type="button"
+              onClick={async () => {
+                if (await run("clear_account_secret", { id: a.id })) {
+                  setDraft({ ...draft, hasCustomSecret: false });
+                }
+              }}
+            >
+              Clear Secret
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
+            <input
+              type="password"
+              aria-label="Account secret or token"
+              placeholder="API Token, Auth Cookie, or JSON"
+              value={secretInput}
+              onChange={(e) => setSecretInput(e.target.value)}
+              style={{ flex: 1 }}
+            />
+            <button
+              type="button"
+              disabled={!secretInput.trim()}
+              onClick={async () => {
+                if (await run("save_account_secret", { id: a.id, secret: secretInput.trim() })) {
+                  setSecretInput("");
+                  setDraft({ ...draft, hasCustomSecret: true });
+                }
+              }}
+            >
+              Save Secret
+            </button>
+          </div>
+        )}
       </div>
       {(draft.connection === "browser" || draft.connection === "geminiWeb") && (
         <button onClick={() => run("open_provider", { id: a.id })}>

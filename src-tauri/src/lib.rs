@@ -1,5 +1,8 @@
-mod config;
-mod providers;
+pub mod config;
+pub mod credentials;
+pub mod http;
+pub mod providers;
+pub mod winsqlite;
 /// Operator-facing diagnostic; callers must obtain local-session consent first.
 pub async fn diagnose_codex() -> Result<serde_json::Value, String> {
     let c = config::Config::default();
@@ -91,6 +94,69 @@ fn save_settings(
     c.settings = settings;
     config::write(&state.path, &c)
 }
+fn is_local_session(conn: &Connection) -> bool {
+    matches!(
+        conn,
+        Connection::CodexCli
+            | Connection::ClaudeCli
+            | Connection::CursorLocal
+            | Connection::GrokCli
+            | Connection::CopilotCli
+            | Connection::AntigravityLocal
+    )
+}
+
+fn uses_local_session(account: &Account) -> bool {
+    is_local_session(&account.connection)
+        && !(account.has_custom_secret && account.connection.supports_custom_secret())
+}
+
+fn saved_secret_flag(account: &Account, existing: Option<&Account>) -> bool {
+    account.enabled && existing.is_some_and(|old| old.has_custom_secret)
+}
+
+#[cfg(test)]
+mod account_secret_tests {
+    use super::*;
+
+    #[test]
+    fn disconnect_and_ui_payload_cannot_restore_a_secret_flag() {
+        let mut account = config::Config::default().accounts.remove(0);
+        account.has_custom_secret = true;
+        let old = account.clone();
+        account.enabled = false;
+        assert!(!saved_secret_flag(&account, Some(&old)));
+        account.enabled = true;
+        assert!(saved_secret_flag(&account, Some(&old)));
+        assert!(!saved_secret_flag(&account, None));
+        let mut cleared = old.clone();
+        cleared.has_custom_secret = false;
+        assert!(!saved_secret_flag(&account, Some(&cleared)));
+    }
+
+    #[test]
+    fn secrets_do_not_exempt_cli_connections_that_ignore_them() {
+        let mut account = config::Config::default().accounts.remove(0);
+        account.has_custom_secret = true;
+        for connection in [Connection::CodexCli, Connection::ClaudeCli] {
+            account.connection = connection;
+            assert!(uses_local_session(&account));
+        }
+        for connection in [
+            Connection::CursorLocal,
+            Connection::GrokCli,
+            Connection::CopilotCli,
+            Connection::AntigravityLocal,
+        ] {
+            account.connection = connection;
+            assert!(!uses_local_session(&account));
+            account.has_custom_secret = false;
+            assert!(uses_local_session(&account));
+            account.has_custom_secret = true;
+        }
+    }
+}
+
 #[tauri::command]
 fn save_account(
     window: tauri::WebviewWindow,
@@ -103,13 +169,27 @@ fn save_account(
         return Err("Account label is too long.".into());
     }
     let mut c = state.config.lock().unwrap();
+    // Secret metadata comes from native storage commands, never the UI payload.
+    account.has_custom_secret =
+        saved_secret_flag(&account, c.accounts.iter().find(|a| a.id == account.id));
     if account.enabled
-        && account.connection == Connection::CodexCli
-        && c.accounts
-            .iter()
-            .any(|a| a.id != account.id && a.enabled && a.connection == Connection::CodexCli)
+        && uses_local_session(&account)
+        && c.accounts.iter().any(|a| {
+            a.id != account.id
+                && a.enabled
+                && a.provider == account.provider
+                && uses_local_session(a)
+        })
     {
-        return Err("Codex uses one current CLI sign-in. Disconnect the other automatic Codex account first; separate manual accounts remain available.".into());
+        let remedy = if account.connection.supports_custom_secret() {
+            "Disconnect the existing automatic account or configure an account-specific token/cookie first."
+        } else {
+            "Disconnect the existing automatic account first; this connection cannot use account-specific tokens."
+        };
+        return Err(format!(
+            "{} uses the current local sign-in. {remedy}",
+            account.provider.display_name(),
+        ));
     }
     let clear = c
         .accounts
@@ -124,9 +204,8 @@ fn save_account(
         c.cached.remove(&account.id);
     }
     if !account.enabled {
-        if let Ok(entry) = keyring::Entry::new("TokenFuel", &account.id) {
-            let _ = entry.delete_credential();
-        }
+        let _ = credentials::delete_account_secret(&account.id);
+        account.has_custom_secret = false;
         if let Some(w) = app.get_webview_window(&format!("provider-{}", account.id)) {
             let _ = w.close();
         }
@@ -154,12 +233,55 @@ fn remove_account(
     let mut c = state.config.lock().unwrap();
     c.accounts.retain(|a| a.id != id);
     c.cached.remove(&id);
-    if let Ok(entry) = keyring::Entry::new("TokenFuel", &id) {
-        let _ = entry.delete_credential();
-    }
+    let _ = credentials::delete_account_secret(&id);
     if let Some(w) = app.get_webview_window(&format!("provider-{id}")) {
         let _ = w.close();
     }
+    config::write(&state.path, &c)
+}
+#[tauri::command]
+fn save_account_secret(
+    window: tauri::WebviewWindow,
+    state: tauri::State<State>,
+    id: String,
+    secret: String,
+) -> Result<(), String> {
+    local_ui(&window)?;
+    let mut c = state.config.lock().unwrap();
+    let a = c
+        .accounts
+        .iter_mut()
+        .find(|a| a.id == id)
+        .ok_or("Account missing.")?;
+    if !a.connection.supports_custom_secret() {
+        return Err(
+            "This connection uses its local sign-in and does not support account-specific secrets."
+                .into(),
+        );
+    }
+    credentials::save_account_secret(&id, &secret)?;
+    a.has_custom_secret = true;
+    a.revision = a.revision.saturating_add(1);
+    c.cached.remove(&id);
+    config::write(&state.path, &c)
+}
+#[tauri::command]
+fn clear_account_secret(
+    window: tauri::WebviewWindow,
+    state: tauri::State<State>,
+    id: String,
+) -> Result<(), String> {
+    local_ui(&window)?;
+    let mut c = state.config.lock().unwrap();
+    let a = c
+        .accounts
+        .iter_mut()
+        .find(|a| a.id == id)
+        .ok_or("Account missing.")?;
+    let _ = credentials::delete_account_secret(&id);
+    a.has_custom_secret = false;
+    a.revision = a.revision.saturating_add(1);
+    c.cached.remove(&id);
     config::write(&state.path, &c)
 }
 #[derive(serde::Deserialize)]
@@ -314,6 +436,7 @@ async fn poll(app: &tauri::AppHandle, force: bool) {
     }
     let c = state.config.lock().unwrap().clone();
     let mut changed = false;
+    let mut to_poll = Vec::new();
     for a in &c.accounts {
         let previous = c.cached.get(&a.id);
         if !force
@@ -354,84 +477,106 @@ async fn poll(app: &tauri::AppHandle, force: bool) {
             }) && let Some(s) = state.config.lock().unwrap().cached.get_mut(&a.id)
             {
                 s.status = Status::Stale;
+                changed = true;
             }
             continue;
         }
-        let mut snapshot = match providers::fetch(app, a).await {
-            Ok(s) => {
-                state.failures.lock().unwrap().remove(&a.id);
-                s
-            }
-            Err(e) => {
-                let mut f = state.failures.lock().unwrap();
-                let failures = f.entry(a.id.clone()).or_default();
-                *failures = failures.saturating_add(1);
-                let mut s = previous
-                    .cloned()
-                    .unwrap_or_else(|| Snapshot::empty(&a.id, a.provider, e.status, &e.message));
-                s.status = e.status;
-                s.message = e.message;
-                s.retry_at = Some(tokenfuel_core::scheduler::next_attempt(
-                    Utc::now(),
-                    c.settings.interval_secs,
-                    *failures,
-                    e.retry_after,
-                ));
-                s
-            }
-        };
-        if a.connection == Connection::Manual {
-            snapshot.fetched_at = snapshot.limits.first().map(|q| q.observed_at);
-            snapshot.message = "Manual snapshot · not verified automatic tracking.".into();
+        to_poll.push(a.clone());
+    }
+
+    if !to_poll.is_empty() {
+        let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(4));
+        let (tx, mut rx) = tokio::sync::mpsc::channel(to_poll.len());
+        for a in to_poll {
+            let sem = semaphore.clone();
+            let app_handle = app.clone();
+            let tx = tx.clone();
+            tauri::async_runtime::spawn(async move {
+                let _permit = sem.acquire().await;
+                let res = providers::fetch(&app_handle, &a).await;
+                let _ = tx.send((a, res)).await;
+            });
         }
-        snapshot.mark_stale(
-            Utc::now(),
-            c.settings.interval_secs,
-            a.connection == Connection::Browser,
-        );
-        // Commit and notify only if the account still matches this in-flight request.
-        let mut live = state.config.lock().unwrap();
-        if !live.accounts.iter().any(|account| {
-            account.id == a.id && account.revision == a.revision && account.enabled == a.enabled
-        }) {
-            continue;
-        }
-        if c.settings.alerts && snapshot.status == Status::Available {
-            for q in &snapshot.limits {
-                if q.source == Source::Manual {
-                    continue;
+        drop(tx);
+
+        while let Some((a, res)) = rx.recv().await {
+            let previous = c.cached.get(&a.id);
+            let mut snapshot = match res {
+                Ok(s) => {
+                    state.failures.lock().unwrap().remove(&a.id);
+                    s
                 }
-                for threshold in [20., 10.] {
-                    if q.remaining_percent.is_some_and(|p| p <= threshold)
-                        && previous
-                            .and_then(|s| s.limits.iter().find(|old| old.id == q.id))
-                            .and_then(|q| q.remaining_percent)
-                            .is_some_and(|p| p > threshold)
-                    {
-                        let _ = app
-                            .notification()
-                            .builder()
-                            .title("TokenFuel · low remaining allowance")
-                            .body(format!(
-                                "{}: {} has {:.0}% remaining",
-                                a.label,
-                                q.name,
-                                q.remaining_percent.unwrap()
-                            ))
-                            .show();
+                Err(e) => {
+                    let mut f = state.failures.lock().unwrap();
+                    let failures = f.entry(a.id.clone()).or_default();
+                    *failures = failures.saturating_add(1);
+                    let mut s = previous.cloned().unwrap_or_else(|| {
+                        Snapshot::empty(&a.id, a.provider, e.status, &e.message)
+                    });
+                    s.status = e.status;
+                    s.message = e.message;
+                    s.retry_at = Some(tokenfuel_core::scheduler::next_attempt(
+                        Utc::now(),
+                        c.settings.interval_secs,
+                        *failures,
+                        e.retry_after,
+                    ));
+                    s
+                }
+            };
+            if a.connection == Connection::Manual {
+                snapshot.fetched_at = snapshot.limits.first().map(|q| q.observed_at);
+                snapshot.message = "Manual snapshot · not verified automatic tracking.".into();
+            }
+            snapshot.mark_stale(
+                Utc::now(),
+                c.settings.interval_secs,
+                a.connection == Connection::Browser,
+            );
+            // Commit and notify only if the account still matches this in-flight request.
+            let mut live = state.config.lock().unwrap();
+            if !live.accounts.iter().any(|account| {
+                account.id == a.id && account.revision == a.revision && account.enabled == a.enabled
+            }) {
+                continue;
+            }
+            if c.settings.alerts && snapshot.status == Status::Available {
+                for q in &snapshot.limits {
+                    if q.source == Source::Manual {
+                        continue;
+                    }
+                    for threshold in [20., 10.] {
+                        if q.remaining_percent.is_some_and(|p| p <= threshold)
+                            && previous
+                                .and_then(|s| s.limits.iter().find(|old| old.id == q.id))
+                                .and_then(|q| q.remaining_percent)
+                                .is_some_and(|p| p > threshold)
+                        {
+                            let _ = app
+                                .notification()
+                                .builder()
+                                .title("TokenFuel · low remaining allowance")
+                                .body(format!(
+                                    "{}: {} has {:.0}% remaining",
+                                    a.label,
+                                    q.name,
+                                    q.remaining_percent.unwrap()
+                                ))
+                                .show();
+                        }
                     }
                 }
             }
-        }
-        if live.accounts.iter().any(|account| {
-            account.id == a.id
-                && account.provider == a.provider
-                && account.connection == a.connection
-                && account.enabled == a.enabled
-                && account.revision == a.revision
-        }) {
-            live.cached.insert(a.id.clone(), snapshot);
-            changed = true;
+            if live.accounts.iter().any(|account| {
+                account.id == a.id
+                    && account.provider == a.provider
+                    && account.connection == a.connection
+                    && account.enabled == a.enabled
+                    && account.revision == a.revision
+            }) {
+                live.cached.insert(a.id.clone(), snapshot);
+                changed = true;
+            }
         }
     }
     if changed {
@@ -488,6 +633,8 @@ pub fn run() {
             save_settings,
             save_account,
             remove_account,
+            save_account_secret,
+            clear_account_secret,
             set_manual,
             open_provider,
             refresh,

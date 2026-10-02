@@ -107,11 +107,19 @@ function QuotaWindow({
     q?.remaining !== null && q?.remaining !== undefined
       ? `${q.remaining} ${q.unit} left`
       : null;
+  const spending =
+    q?.used !== null && q?.used !== undefined
+      ? `${q.used} ${q.unit} used`
+      : null;
   const amount = q?.unlimited
     ? "Unlimited"
     : p !== null
       ? `${value} remaining${balance ? ` · ${balance}` : ""}`
-      : balance || "No reading";
+      : balance
+        ? balance
+        : spending
+          ? `${spending} (limit not reported)`
+          : "Limit not reported";
   const label = q ? quotaLabel(q) : "Allowance";
   const caption =
     state !== "available" || !q
@@ -160,6 +168,9 @@ function QuotaWindow({
       )}
       {!q?.unlimited && balance && (
         <span className="tile-amount">{balance}</span>
+      )}
+      {!q?.unlimited && !balance && spending && (
+        <span className="tile-amount">{spending} (limit not reported)</span>
       )}
       {q?.unlimited && <span className="tile-amount">Unlimited</span>}
       <span
