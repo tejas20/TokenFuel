@@ -60,5 +60,13 @@ if (-not $fuelCached) {
     }
 }
 if ($DownloadOnly) { Write-Output $fuelExe; return }
+foreach ($fuelExisting in [Diagnostics.Process]::GetProcessesByName('TokenFuel')) {
+    try {
+        if ($fuelExisting.MainModule.FileName -eq $fuelExe) {
+            Write-Host 'TokenFuel is already running. Use its tray menu to show the widget.'
+            return
+        }
+    } catch { } finally { $fuelExisting.Dispose() }
+}
 Write-Host 'Starting TokenFuel. Connect an account in Settings; startup remains opt-in.'
 Start-Process -FilePath $fuelExe
