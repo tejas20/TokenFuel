@@ -3,7 +3,16 @@ import type { Config, Provider, Limit } from "./types";
 export const desktop = "__TAURI_INTERNALS__" in window;
 export const demo = new URLSearchParams(location.search).has("demo");
 const now = Date.now();
-const providers: Provider[] = ["claude", "openai", "gemini"];
+const providers: Provider[] = [
+  "claude",
+  "openai",
+  "gemini",
+  "grok",
+  "opencode",
+  "cursor",
+  "copilot",
+  "antigravity",
+];
 const query = new URLSearchParams(location.search);
 const demoProviders = query.has("providers")
   ? query.get("providers")!.split(",")
@@ -31,67 +40,185 @@ export const initial: Config = {
         ? "codexCli"
         : provider === "claude"
           ? "claudeCli"
-          : "browser",
+          : provider === "opencode"
+            ? "opencodeGo"
+            : provider === "cursor"
+              ? "cursorLocal"
+              : provider === "grok"
+                ? "grokCli"
+                : provider === "copilot"
+                  ? "copilotCli"
+                  : provider === "antigravity"
+                    ? "antigravityLocal"
+                    : "browser",
     enabled: demo && demoProviders.includes(provider),
     experimental: false,
     pinnedLimit: null,
     cliPath: null,
     credentialPath: null,
     manualLimits: [],
+    hasCustomSecret: false,
   })),
   cached: {},
 };
-if (demo)
-  providers.forEach((provider, i) => {
-    const q: Limit = {
-      id: "sample",
-      name: ["Monthly budget", "5 hours", "Weekly"][i],
-      product: i === 1 ? "Codex" : "",
-      scope: "account",
-      unit: i === 0 ? "USD" : "percent",
-      period: i === 0 ? "monthly" : i === 2 ? "weekly" : "rolling",
-      resetsAt: new Date(
-        now + [12 * 86400000, 7800000, 259200000][i],
-      ).toISOString(),
-      used: i === 0 ? "80" : null,
-      total: i === 0 ? "200" : null,
-      remaining: i === 0 ? "120" : null,
-      remainingPercent: [60, 94, 18][i],
-      unlimited: false,
-      source: i === 1 ? "documented" : i === 2 ? "experimental" : "manual",
-      observedAt: new Date(now).toISOString(),
-    };
+function getDemoLimits(provider: Provider, now: number): Limit[] {
+  switch (provider) {
+    case "claude":
+      return [
+        {
+          id: "claude-spend",
+          name: "Monthly budget",
+          product: "Claude",
+          scope: "account",
+          unit: "USD",
+          period: "monthly",
+          resetsAt: new Date(now + 12 * 86400000).toISOString(),
+          used: "80",
+          total: "200",
+          remaining: "120",
+          remainingPercent: 60,
+          unlimited: false,
+          source: "experimental",
+          observedAt: new Date(now).toISOString(),
+        },
+      ];
+    case "openai":
+      return [
+        {
+          id: "codex-5h",
+          name: "5 hours",
+          product: "Codex",
+          scope: "account",
+          unit: "percent",
+          period: "rolling",
+          resetsAt: new Date(now + 7800000).toISOString(),
+          used: null,
+          total: null,
+          remaining: null,
+          remainingPercent: 94,
+          unlimited: false,
+          source: "documented",
+          observedAt: new Date(now).toISOString(),
+        },
+        {
+          id: "codex-weekly",
+          name: "Weekly",
+          product: "Codex",
+          scope: "account",
+          unit: "percent",
+          period: "weekly",
+          resetsAt: new Date(now + 259200000).toISOString(),
+          used: null,
+          total: null,
+          remaining: null,
+          remainingPercent: 84,
+          unlimited: false,
+          source: "documented",
+          observedAt: new Date(now).toISOString(),
+        },
+      ];
+    case "opencode":
+      return [
+        {
+          id: "opencode:five_hour",
+          name: "5 hours",
+          product: "OpenCode Go",
+          scope: "account",
+          unit: "USD",
+          period: "rolling",
+          resetsAt: new Date(now + 7800000).toISOString(),
+          used: "1.25",
+          total: "5",
+          remaining: "3.75",
+          remainingPercent: 75,
+          unlimited: false,
+          source: "experimental",
+          observedAt: new Date(now).toISOString(),
+        },
+        {
+          id: "opencode:weekly",
+          name: "Weekly",
+          product: "OpenCode Go",
+          scope: "account",
+          unit: "USD",
+          period: "weekly",
+          resetsAt: new Date(now + 259200000).toISOString(),
+          used: "14",
+          total: "35",
+          remaining: "21",
+          remainingPercent: 60,
+          unlimited: false,
+          source: "experimental",
+          observedAt: new Date(now).toISOString(),
+        },
+        {
+          id: "opencode:monthly",
+          name: "Monthly",
+          product: "OpenCode Go",
+          scope: "account",
+          unit: "USD",
+          period: "monthly",
+          resetsAt: new Date(now + 2592000000).toISOString(),
+          used: "45",
+          total: "150",
+          remaining: "105",
+          remainingPercent: 70,
+          unlimited: false,
+          source: "experimental",
+          observedAt: new Date(now).toISOString(),
+        },
+      ];
+    default:
+      return [
+        {
+          id: `${provider}-5h`,
+          name: "5 hours",
+          product: provider,
+          scope: "account",
+          unit: "percent",
+          period: "rolling",
+          resetsAt: new Date(now + 7800000).toISOString(),
+          used: null,
+          total: null,
+          remaining: null,
+          remainingPercent: 66,
+          unlimited: false,
+          source: "experimental",
+          observedAt: new Date(now).toISOString(),
+        },
+        {
+          id: `${provider}-weekly`,
+          name: "Weekly",
+          product: provider,
+          scope: "account",
+          unit: "percent",
+          period: "weekly",
+          resetsAt: new Date(now + 259200000).toISOString(),
+          used: null,
+          total: null,
+          remaining: null,
+          remainingPercent: 18,
+          unlimited: false,
+          source: "experimental",
+          observedAt: new Date(now).toISOString(),
+        },
+      ];
+  }
+}
+
+if (demo) {
+  providers.forEach((provider) => {
     initial.cached[provider] = {
       accountId: provider,
       provider,
       status: "available",
       message: "Design preview · fictional sample data.",
-      // Show the real multi-window shape in design previews, not one pool per provider.
-      limits:
-        provider === "claude"
-          ? [q]
-          : [
-              {
-                ...q,
-                id: "sample-current",
-                name: "5 hours",
-                period: "rolling",
-                remainingPercent: i === 1 ? 94 : 66,
-                resetsAt: new Date(now + 7800000).toISOString(),
-              },
-              {
-                ...q,
-                id: "sample-weekly",
-                name: "Weekly",
-                period: "weekly",
-                remainingPercent: i === 1 ? 84 : 18,
-                resetsAt: new Date(now + 259200000).toISOString(),
-              },
-            ],
+      limits: getDemoLimits(provider, now),
       fetchedAt: new Date(now).toISOString(),
       retryAt: null,
     };
   });
+}
 let preview = JSON.parse(JSON.stringify(initial)) as Config;
 export async function command<T = void>(
   name: string,
@@ -108,7 +235,13 @@ export async function command<T = void>(
     else preview.accounts.push({ ...account, id: crypto.randomUUID() });
   } else if (name === "remove_account")
     preview.accounts = preview.accounts.filter((a) => a.id !== args.id);
-  else if (name === "open_provider" || name === "set_manual")
+  else if (name === "save_account_secret") {
+    const acc = preview.accounts.find((a) => a.id === args.id);
+    if (acc) acc.hasCustomSecret = true;
+  } else if (name === "clear_account_secret") {
+    const acc = preview.accounts.find((a) => a.id === args.id);
+    if (acc) acc.hasCustomSecret = false;
+  } else if (name === "open_provider" || name === "set_manual")
     throw Error("This connection needs the Windows app.");
   return undefined as T;
 }

@@ -9,6 +9,28 @@ pub enum Provider {
     Openai,
     Gemini,
     Grok,
+    Opencode,
+    Cursor,
+    Copilot,
+    Antigravity,
+    #[serde(other)]
+    Unknown,
+}
+
+impl Provider {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Claude => "Claude",
+            Self::Openai => "OpenAI",
+            Self::Gemini => "Gemini",
+            Self::Grok => "Grok",
+            Self::Opencode => "OpenCode",
+            Self::Cursor => "Cursor",
+            Self::Copilot => "Copilot",
+            Self::Antigravity => "Antigravity",
+            Self::Unknown => "Unknown",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

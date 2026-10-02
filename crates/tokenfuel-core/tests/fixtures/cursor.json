@@ -1,0 +1,10 @@
+{
+  "billingCycleEnd": "2026-10-31T23:59:59.000Z",
+  "individualUsage": {
+    "plan": {
+      "autoPercentUsed": 42.5,
+      "apiPercentUsed": 15.0,
+      "totalPercentUsed": 57.5
+    }
+  }
+}

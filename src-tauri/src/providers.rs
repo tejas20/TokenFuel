@@ -24,6 +24,16 @@ impl Failure {
     }
 }
 
+impl From<crate::http::Failure> for Failure {
+    fn from(e: crate::http::Failure) -> Self {
+        Self {
+            status: e.status,
+            message: e.message,
+            retry_after: e.retry_after,
+        }
+    }
+}
+
 pub async fn fetch(app: &AppHandle, account: &Account) -> Result<Snapshot, Failure> {
     if !account.enabled {
         return Ok(Snapshot::empty(
@@ -41,6 +51,9 @@ pub async fn fetch(app: &AppHandle, account: &Account) -> Result<Snapshot, Failu
         )),
         Connection::CodexCli if account.provider == Provider::Openai => codex(account).await,
         Connection::ClaudeCli if account.provider == Provider::Claude => claude(account).await,
+        Connection::OpencodeGo if account.provider == Provider::Opencode => {
+            opencode(account).await
+        }
         Connection::Browser => browser(app, account).await,
         Connection::GeminiWeb if account.provider == Provider::Gemini => {
             gemini_web(app, account).await
@@ -283,6 +296,151 @@ pub async fn claude(account: &Account) -> Result<Snapshot, Failure> {
     Ok(result)
 }
 
+pub async fn opencode(account: &Account) -> Result<Snapshot, Failure> {
+    let mut workspace_id = account.workspace.trim().to_string();
+    let mut auth_cookie = String::new();
+
+    if account.has_custom_secret {
+        if let Some(secret) = crate::credentials::read_account_secret(&account.id) {
+            let secret = secret.trim();
+            if let Ok(v) = serde_json::from_str::<Value>(secret) {
+                if let Some(c) = v
+                    .get("authCookie")
+                    .or_else(|| v.get("auth_cookie"))
+                    .or_else(|| v.get("cookie"))
+                    .and_then(Value::as_str)
+                {
+                    auth_cookie = c.trim().to_string();
+                }
+                if workspace_id.is_empty() {
+                    if let Some(w) = v
+                        .get("workspaceId")
+                        .or_else(|| v.get("workspace_id"))
+                        .and_then(Value::as_str)
+                    {
+                        workspace_id = w.trim().to_string();
+                    }
+                }
+            } else if !secret.is_empty() {
+                auth_cookie = secret.to_string();
+            }
+        }
+    }
+
+    if auth_cookie.is_empty() {
+        if let Ok(c) = std::env::var("OPENCODE_GO_AUTH_COOKIE") {
+            auth_cookie = c.trim().to_string();
+        }
+    }
+    if workspace_id.is_empty() {
+        if let Ok(w) = std::env::var("OPENCODE_GO_WORKSPACE_ID") {
+            workspace_id = w.trim().to_string();
+        }
+    }
+
+    if auth_cookie.is_empty() || workspace_id.is_empty() {
+        let mut candidates = Vec::new();
+        if let Some(ref p) = account.credential_path {
+            candidates.push(PathBuf::from(p));
+        }
+        if let Ok(p) = std::env::var("OPENCODE_GO_CONFIG_FILE") {
+            candidates.push(PathBuf::from(p));
+        }
+        if let Ok(app_data) = std::env::var("APPDATA") {
+            candidates.push(PathBuf::from(app_data).join("opencode-go").join("config.json"));
+        }
+        if let Ok(home) = std::env::var("USERPROFILE") {
+            let home_p = PathBuf::from(home);
+            candidates.push(home_p.join(".config").join("opencode-bar").join("opencode-go.json"));
+            candidates.push(home_p.join(".config").join("opencode-quota").join("opencode-go.json"));
+        }
+        for path in candidates {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok(cfg) = serde_json::from_str::<Value>(&content) {
+                    if auth_cookie.is_empty() {
+                        if let Some(c) = cfg
+                            .get("authCookie")
+                            .or_else(|| cfg.get("auth_cookie"))
+                            .or_else(|| cfg.get("cookie"))
+                            .and_then(Value::as_str)
+                        {
+                            auth_cookie = c.trim().to_string();
+                        }
+                    }
+                    if workspace_id.is_empty() {
+                        if let Some(w) = cfg
+                            .get("workspaceId")
+                            .or_else(|| cfg.get("workspace_id"))
+                            .and_then(Value::as_str)
+                        {
+                            workspace_id = w.trim().to_string();
+                        }
+                    }
+                    if !auth_cookie.is_empty() && !workspace_id.is_empty() {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    if auth_cookie.is_empty() {
+        return Err(Failure::new(
+            Status::LoginRequired,
+            "OpenCode Go auth cookie was not found. Set it in Account settings or OPENCODE_GO_AUTH_COOKIE.",
+        ));
+    }
+    if workspace_id.is_empty() {
+        return Err(Failure::new(
+            Status::LoginRequired,
+            "OpenCode Go workspace ID was not found. Set it in Account settings or OPENCODE_GO_WORKSPACE_ID.",
+        ));
+    }
+
+    let cookie = if auth_cookie.split(';').any(|part| {
+        let p = part.trim_start();
+        p.starts_with("auth=") || p.starts_with("__Host-console_session=")
+    }) {
+        auth_cookie
+    } else {
+        format!("auth={auth_cookie}")
+    };
+
+    let client = crate::http::create_client()?;
+    let response = client
+        .get("https://opencode.ai/console/api/go/status")
+        .header("Accept", "application/json")
+        .header("x-org-id", &workspace_id)
+        .header("Cookie", &cookie)
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+        )
+        .send()
+        .await
+        .map_err(|e| Failure::new(Status::Offline, format!("OpenCode Go request failed: {e}")))?;
+
+    let status_code = response.status();
+    let headers = response.headers().clone();
+    crate::http::handle_http_status(status_code, &headers, "OpenCode Go")?;
+
+    let bytes = crate::http::read_bounded_bytes(response, 1_048_576).await?;
+    let value: Value = serde_json::from_slice(&bytes)
+        .map_err(|_| Failure::new(Status::Unavailable, "OpenCode Go returned invalid JSON."))?;
+
+    let limits = parsers::opencode(&value);
+    if limits.is_empty() {
+        return Err(Failure::new(
+            Status::Unavailable,
+            "OpenCode Go status returned no active subscription meters.",
+        ));
+    }
+
+    let mut snapshot = Snapshot::ready(&account.id, account.provider, limits);
+    snapshot.message = format!("OpenCode Go · Org {workspace_id}");
+    Ok(snapshot)
+}
+
 async fn browser(app: &AppHandle, account: &Account) -> Result<Snapshot, Failure> {
     if !account.experimental {
         return Err(Failure::new(
@@ -466,6 +624,11 @@ pub fn provider_url(provider: Provider) -> &'static str {
         Provider::Openai => "https://chatgpt.com/",
         Provider::Gemini => "https://gemini.google.com/usage",
         Provider::Grok => "https://grok.com/",
+        Provider::Opencode => "https://opencode.ai/console",
+        Provider::Cursor => "https://www.cursor.com/settings",
+        Provider::Copilot => "https://github.com/settings/copilot",
+        Provider::Antigravity => "https://cloud.google.com/",
+        Provider::Unknown => "about:blank",
     }
 }
 
@@ -499,6 +662,26 @@ pub fn safe_navigation(url: &tauri::Url, provider: Provider) -> bool {
             "appleid.apple.com",
         ],
         Provider::Grok => &["grok.com"],
+        Provider::Opencode => &[
+            "opencode.ai",
+            "auth.opencode.ai",
+            "accounts.google.com",
+            "github.com",
+        ],
+        Provider::Cursor => &[
+            "cursor.com",
+            "www.cursor.com",
+            "authenticator.cursor.sh",
+            "github.com",
+            "accounts.google.com",
+        ],
+        Provider::Copilot => &["github.com", "api.github.com"],
+        Provider::Antigravity => &[
+            "cloud.google.com",
+            "accounts.google.com",
+            "myaccount.google.com",
+        ],
+        Provider::Unknown => &[],
     };
     allowed.contains(&host)
 }

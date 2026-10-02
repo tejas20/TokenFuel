@@ -1,0 +1,42 @@
+{
+  "summary": {
+    "groups": [
+      {
+        "displayName": "Gemini Models",
+        "description": "Quotas for Gemini in Google Antigravity",
+        "buckets": [
+          {
+            "bucketId": "gemini-5h",
+            "displayName": "Session 5h",
+            "window": "5h",
+            "remainingFraction": 0.85,
+            "resetTime": "2026-10-02T20:15:00Z"
+          },
+          {
+            "bucketId": "gemini-weekly",
+            "displayName": "Weekly Quota",
+            "window": "weekly",
+            "remainingFraction": 0.60,
+            "resetTime": "2026-10-08T00:00:00Z"
+          }
+        ]
+      }
+    ]
+  },
+  "models": {
+    "models": {
+      "gemini-2.5-pro": {
+        "quotaInfo": {
+          "remainingFraction": 0.72,
+          "resetTime": "2026-10-02T21:00:00Z"
+        }
+      },
+      "gemini-2.5-flash": {
+        "quotaInfo": {
+          "remainingFraction": 0.95,
+          "resetTime": "2026-10-02T21:00:00Z"
+        }
+      }
+    }
+  }
+}

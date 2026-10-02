@@ -1,4 +1,13 @@
-export type Provider = "claude" | "openai" | "gemini" | "grok";
+export type Provider =
+  | "claude"
+  | "openai"
+  | "gemini"
+  | "grok"
+  | "opencode"
+  | "cursor"
+  | "copilot"
+  | "antigravity"
+  | "unknown";
 export interface Limit {
   id: string;
   name: string;
@@ -36,13 +45,25 @@ export interface Account {
   provider: Provider;
   label: string;
   workspace: string;
-  connection: "codexCli" | "claudeCli" | "browser" | "geminiWeb" | "manual";
+  connection:
+    | "codexCli"
+    | "claudeCli"
+    | "browser"
+    | "geminiWeb"
+    | "opencodeGo"
+    | "cursorLocal"
+    | "grokCli"
+    | "copilotCli"
+    | "antigravityLocal"
+    | "manual"
+    | "unknown";
   enabled: boolean;
   experimental: boolean;
   pinnedLimit: string | null;
   cliPath: string | null;
   credentialPath: string | null;
   manualLimits: Limit[];
+  hasCustomSecret?: boolean;
 }
 export interface Settings {
   view: "bars" | "rings";

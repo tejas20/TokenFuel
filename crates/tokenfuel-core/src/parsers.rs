@@ -270,6 +270,52 @@ pub fn claude(value: &Value) -> Vec<UsageLimit> {
     out
 }
 
+/// OpenCode Go subscription status. Uses micro-cents (1 USD = 100,000,000 micro-cents).
+pub fn opencode(value: &Value) -> Vec<UsageLimit> {
+    let mut out = Vec::new();
+    let access = value.get("access").unwrap_or(value);
+    let Some(meters) = access.get("meters").and_then(Value::as_object) else {
+        return out;
+    };
+    let microcents_divisor = Decimal::from(100_000_000u64);
+    let ends_at = timestamp(access.get("endsAt").or_else(|| access.get("ends_at")));
+
+    let specs: [(&[&str], &str, &str, &str); 3] = [
+        (&["fiveHour", "five_hour"], "opencode:five_hour", "5 hours", "rolling"),
+        (&["week", "weekly"], "opencode:weekly", "Weekly", "weekly"),
+        (&["month", "monthly"], "opencode:monthly", "Monthly", "monthly"),
+    ];
+
+    for (keys, id, name, period) in specs {
+        let meter_obj = keys.iter().find_map(|k| meters.get(*k)).and_then(Value::as_object);
+        let Some(meter) = meter_obj else {
+            continue;
+        };
+        let used_dec = decimal(meter.get("usedMicroCents").or_else(|| meter.get("used_micro_cents")));
+        let limit_dec = decimal(meter.get("limitMicroCents").or_else(|| meter.get("limit_micro_cents")));
+
+        if let Some(used_raw) = used_dec {
+            let used = used_raw / microcents_divisor;
+            let total = limit_dec.map(|l| l / microcents_divisor);
+            if let Ok(mut q) = UsageLimit::amounts(
+                id,
+                name,
+                "OpenCode Go",
+                "USD",
+                period,
+                used,
+                total,
+                Source::Experimental,
+            ) {
+                let res_time = timestamp(meter.get("resetsAt").or_else(|| meter.get("resets_at")));
+                q.resets_at = res_time.or(if period == "monthly" { ends_at } else { None });
+                out.push(q);
+            }
+        }
+    }
+    out
+}
+
 fn minor_amount(v: Option<&Value>) -> Option<Decimal> {
     let v = v?;
     let amount = decimal(v.get("amount_minor"))?;
@@ -365,5 +411,41 @@ mod tests {
         let first = claude(&json!({"limits":[a.clone(),b.clone()]}));
         let second = claude(&json!({"limits":[b,a]}));
         assert_eq!(first[0].id, second[1].id);
+    }
+
+    #[test]
+    fn opencode_parses_microcents_and_windows() {
+        let text = include_str!("../tests/fixtures/opencode.json");
+        let v: Value = serde_json::from_str(text).unwrap();
+        let q = opencode(&v);
+        assert_eq!(q.len(), 3);
+
+        let five_hour = q.iter().find(|x| x.id == "opencode:five_hour").unwrap();
+        assert_eq!(five_hour.name, "5 hours");
+        assert_eq!(five_hour.used.as_deref(), Some("1.25"));
+        assert_eq!(five_hour.total.as_deref(), Some("5"));
+        assert_eq!(five_hour.remaining.as_deref(), Some("3.75"));
+        assert_eq!(five_hour.remaining_percent, Some(75.0));
+        assert_eq!(five_hour.unit, "USD");
+        assert_eq!(
+            five_hour.resets_at.unwrap().to_rfc3339(),
+            "2026-10-02T19:30:00+00:00"
+        );
+
+        let weekly = q.iter().find(|x| x.id == "opencode:weekly").unwrap();
+        assert_eq!(weekly.used.as_deref(), Some("14"));
+        assert_eq!(weekly.total.as_deref(), Some("35"));
+        assert_eq!(weekly.remaining.as_deref(), Some("21"));
+        assert_eq!(weekly.remaining_percent, Some(60.0));
+
+        let monthly = q.iter().find(|x| x.id == "opencode:monthly").unwrap();
+        assert_eq!(monthly.used.as_deref(), Some("45"));
+        assert_eq!(monthly.total.as_deref(), Some("150"));
+        assert_eq!(monthly.remaining.as_deref(), Some("105"));
+        assert_eq!(monthly.remaining_percent, Some(70.0));
+        assert_eq!(
+            monthly.resets_at.unwrap().to_rfc3339(),
+            "2026-11-01T00:00:00+00:00"
+        );
     }
 }

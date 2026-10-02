@@ -10,6 +10,13 @@ pub enum Connection {
     Browser,
     GeminiWeb,
     Manual,
+    OpencodeGo,
+    CursorLocal,
+    GrokCli,
+    CopilotCli,
+    AntigravityLocal,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,6 +34,8 @@ pub struct Account {
     pub pinned_limit: Option<String>,
     pub cli_path: Option<String>,
     pub credential_path: Option<String>,
+    #[serde(default)]
+    pub has_custom_secret: bool,
     pub manual_limits: Vec<UsageLimit>,
 }
 
@@ -93,6 +102,7 @@ impl Default for Config {
                 cli_path: None,
                 credential_path: None,
                 manual_limits: vec![],
+                has_custom_secret: false,
             })
             .collect();
         Self {
@@ -106,10 +116,15 @@ impl Default for Config {
 }
 
 pub fn read(path: &Path) -> Config {
-    std::fs::read(path)
+    let mut config: Config = std::fs::read(path)
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if config.schema_version < 2 {
+        config.schema_version = 2;
+        let _ = write(path, &config);
+    }
+    config
 }
 pub fn write(path: &Path, config: &Config) -> Result<(), String> {
     let dir = path.parent().ok_or("Invalid configuration directory.")?;
