@@ -21,6 +21,7 @@ vi.mock("./bridge", () => ({
   })),
 }));
 import App, { AccountEditor } from "./App";
+import { command } from "./bridge";
 
 function editor(
   connection: Account["connection"],
@@ -94,7 +95,7 @@ test("new providers offer their local source and manual input without unsupporte
   }
 });
 
-test("first run opens setup when no accounts are connected", async () => {
+test("first run stays on the usage widget when no accounts are connected", async () => {
   const container = document.createElement("div");
   const root = createRoot(container);
   (
@@ -103,7 +104,78 @@ test("first run opens setup when no accounts are connected", async () => {
   await act(async () => {
     root.render(<App />);
   });
-  expect(container.querySelector(".settings")).not.toBeNull();
-  expect(container.textContent).toContain("Choose your provider");
+  expect(container.querySelector(".settings")).toBeNull();
+  expect(container.querySelector('[aria-label="Widget menu"]')).not.toBeNull();
+  expect(container.querySelector(".accounts")?.textContent).toContain(
+    "Connect",
+  );
+  await act(async () => root.unmount());
+});
+
+test("connection and Windows issues are highlighted in Settings without opening it", async () => {
+  vi.mocked(command).mockResolvedValueOnce({
+    accounts: [
+      { ...emptyAccount, id: "codex", provider: "openai", enabled: true },
+    ],
+    cached: {
+      codex: {
+        status: "loginRequired",
+        message: "Sign in to Codex.",
+        limits: [],
+      },
+    },
+    settings: { view: "bars", theme: "dark", intervalSecs: 120 },
+    settingsIssues: ["Windows could not apply startup."],
+  });
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  await act(async () => root.render(<App />));
+  expect(container.querySelector(".settings")).toBeNull();
+  expect(
+    container.querySelector('[aria-label*="connection issues"]'),
+  ).not.toBeNull();
+  await act(async () =>
+    (
+      container.querySelector(".compact-tools button") as HTMLButtonElement
+    ).click(),
+  );
+  expect(
+    container.querySelector('[aria-label="2 settings issues"]'),
+  ).not.toBeNull();
+  await act(async () =>
+    (
+      container.querySelector('[aria-label="Settings"]') as HTMLButtonElement
+    ).click(),
+  );
+  expect(container.querySelector(".settings")?.textContent).toContain(
+    "Sign in to Codex.",
+  );
+  expect(container.querySelector(".settings")?.textContent).toContain(
+    "Windows could not apply startup.",
+  );
+  await act(async () => root.unmount());
+});
+
+test("preference controls send only the changed field", async () => {
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  await act(async () => root.render(<App />));
+  await act(async () =>
+    (
+      container.querySelector(".compact-tools button") as HTMLButtonElement
+    ).click(),
+  );
+  await act(async () =>
+    (
+      container.querySelector('[aria-label="Settings"]') as HTMLButtonElement
+    ).click(),
+  );
+  const startup = [...container.querySelectorAll("label")]
+    .find((label) => label.textContent?.includes("Start with Windows"))!
+    .querySelector("input")!;
+  await act(async () => startup.click());
+  expect(command).toHaveBeenCalledWith("save_settings", {
+    settings: { startup: true },
+  });
   await act(async () => root.unmount());
 });

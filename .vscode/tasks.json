@@ -1,0 +1,75 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Tauri: Run Development App (pnpm tauri dev)",
+      "type": "shell",
+      "command": "pnpm tauri dev",
+      "isBackground": true,
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Vite: Run Frontend Preview (pnpm dev)",
+      "type": "shell",
+      "command": "pnpm dev",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "vite",
+        "pattern": {
+          "regexp": "^(.*):(\\d+):(.*)$",
+          "file": 1,
+          "line": 2,
+          "message": 3
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "VITE v",
+          "endsPattern": "Local:.*127\\.0\\.0\\.1:1420"
+        }
+      }
+    },
+    {
+      "label": "Desktop: Prepare Debug Build",
+      "type": "shell",
+      "command": "cargo build --bin tokenfuel",
+      "dependsOn": "Vite: Run Frontend Preview (pnpm dev)",
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "Frontend: Build (pnpm build)",
+      "type": "shell",
+      "command": "pnpm build",
+      "problemMatcher": ["$tsc"]
+    },
+    {
+      "label": "Frontend: Test (pnpm test)",
+      "type": "shell",
+      "command": "pnpm test",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Rust: Test Workspace (cargo test)",
+      "type": "shell",
+      "command": "cargo test --workspace",
+      "group": "test",
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "Rust: Clippy Lints (cargo clippy)",
+      "type": "shell",
+      "command": "cargo clippy --workspace --all-targets -- -D warnings",
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "Tauri: Build Release Bundle (pnpm tauri build)",
+      "type": "shell",
+      "command": "pnpm tauri build",
+      "problemMatcher": []
+    }
+  ]
+}

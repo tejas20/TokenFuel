@@ -1,8 +1,13 @@
-import { PushPin } from "@phosphor-icons/react";
+import { PushPin, WarningCircle, PencilSimple } from "@phosphor-icons/react";
 import { CircularProgressbar, buildStyles } from "react-circular-progressbar";
 import { countdown, percent } from "./format";
 import { displayStatus } from "./freshness";
-import { accountName, quotaLabel, visibleLimits } from "./widget";
+import {
+  accountName,
+  compactQuotaLabel,
+  quotaLabel,
+  visibleLimits,
+} from "./widget";
 import type { Account, Limit, Settings, Snapshot } from "./types";
 
 const states: Record<string, string> = {
@@ -21,6 +26,7 @@ export function QuotaTile({
   now,
   expanded,
   onClick,
+  focused = false,
 }: {
   account: Account;
   snapshot?: Snapshot;
@@ -28,6 +34,7 @@ export function QuotaTile({
   now: number;
   expanded: boolean;
   onClick: () => void;
+  focused?: boolean;
 }) {
   const limits = a.enabled ? visibleLimits(snapshot, a.pinnedLimit) : [];
   const identity = [a.label, a.workspace].filter(Boolean).join(" · ");
@@ -35,17 +42,17 @@ export function QuotaTile({
     a.enabled && a.pinnedLimit && !limits.some((q) => q.id === a.pinnedLimit);
   return (
     <button
-      className={`quota-tile provider ${a.provider}`}
+      className={`quota-tile provider ${a.provider} ${focused ? "focused-tile" : ""}`}
       aria-label={`${accountName(a)} · ${identity} · All remaining allowances`}
       aria-expanded={expanded}
       onClick={onClick}
       title={`${accountName(a)} · ${identity}\nClick for connection details and quota pinning`}
     >
-      <span className="tile-heading">
+      <span className={`tile-heading ${focused ? "sr-only" : ""}`}>
         <img src={`/providers/${a.provider}.svg`} alt="" />
-        <strong>{accountName(a)}</strong>
+        <strong className="sr-only">{accountName(a)}</strong>
       </span>
-      <span className="tile-identity" title={identity}>
+      <span className="tile-identity sr-only" title={identity}>
         {identity}
       </span>
       <span className="tile-limits">
@@ -61,24 +68,29 @@ export function QuotaTile({
         ))}
       </span>
       {missingPin && (
-        <span className="tile-caption attention">Pinned limit unavailable</span>
+        <WarningCircle
+          className="pin-warning"
+          aria-label="Pinned limit unavailable"
+        />
       )}
     </button>
   );
 }
 
-function QuotaWindow({
+export function QuotaWindow({
   account: a,
   snapshot,
   quota: q,
   settings,
   now,
+  detailed = false,
 }: {
   account: Account;
   snapshot?: Snapshot;
   quota?: Limit;
   settings: Settings;
   now: number;
+  detailed?: boolean;
 }) {
   const p = q?.remainingPercent ?? null;
   const state = a.enabled
@@ -93,7 +105,13 @@ function QuotaWindow({
   const reset = q?.resetsAt
     ? countdown(q.resetsAt, now)
     : q?.resetLabel || "Reset not reported";
-  const value = q?.unlimited ? "∞" : percent(p);
+  const value = q?.unlimited
+    ? "∞"
+    : p !== null
+      ? percent(p)
+      : q?.remaining != null
+        ? `${q.remaining} ${q.unit}`
+        : "—";
   const age = q
     ? Math.max(0, Math.floor((now - Date.parse(q.observedAt)) / 60000))
     : null;
@@ -120,14 +138,21 @@ function QuotaWindow({
         : spending
           ? `${spending} (limit not reported)`
           : "Limit not reported";
-  const label = q ? quotaLabel(q) : "Allowance";
-  const caption =
-    state !== "available" || !q
+  const label = q
+    ? detailed
+      ? quotaLabel(q)
+      : compactQuotaLabel(q)
+    : states[state] || "Allowance";
+  const caption = detailed
+    ? state !== "available" || !q
+      ? `${status} · ${reset}`
+      : reset
+    : state !== "available" || !q
       ? status
       : `${q.source === "manual" ? "Manual · " : q.source === "experimental" ? "Experimental · " : ""}${p !== null && p < 20 ? "Low · " : ""}${reset.replace("Resets in ", "Reset ")}`;
   return (
     <span
-      className={`quota-window provider ${a.provider} ${p !== null && p <= 50 ? "deeper" : ""} ${p !== null && p < 20 ? "low" : ""} ${state !== "available" ? "unverified" : ""}`}
+      className={`quota-window provider ${a.provider} ${detailed ? "detail-window" : ""} ${p !== null && p < 20 ? "low" : ""} ${state !== "available" ? "unverified" : ""}`}
       aria-label={`${label} · ${amount} · ${status} · ${reset}`}
       title={`${q?.product ? `${q.product} · ` : ""}${label} · ${q?.scope || "account"}\n${amount}\n${reset}\n${status} · ${Number.isFinite(age) ? age : "?"}m ago`}
     >
@@ -137,7 +162,13 @@ function QuotaWindow({
         )}
         {label}
       </span>
-      {settings.view === "rings" ? (
+      {!detailed && state !== "available" && q && (
+        <WarningCircle className="reading-warning" aria-label={status} />
+      )}
+      {!detailed && q?.source === "manual" && (
+        <PencilSimple className="source-marker" aria-label="Manual snapshot" />
+      )}
+      {!detailed && settings.view === "rings" ? (
         <span className="mini-ring">
           <CircularProgressbar
             value={p ?? 0}
@@ -163,18 +194,29 @@ function QuotaWindow({
           ) : (
             <span className="unknown-track" aria-hidden="true" />
           )}
-          <span className="tile-value">{value}</span>
+          <span className="tile-value">
+            {value}
+            {detailed && p !== null ? <small> remaining</small> : null}
+          </span>
         </span>
       )}
       {!q?.unlimited && balance && (
-        <span className="tile-amount">{balance}</span>
+        <span className={`tile-amount ${detailed ? "" : "sr-only"}`}>
+          {balance}
+        </span>
       )}
       {!q?.unlimited && !balance && spending && (
-        <span className="tile-amount">{spending} (limit not reported)</span>
+        <span className={`tile-amount ${detailed ? "" : "sr-only"}`}>
+          {spending} (limit not reported)
+        </span>
       )}
-      {q?.unlimited && <span className="tile-amount">Unlimited</span>}
+      {q?.unlimited && (
+        <span className={`tile-amount ${detailed ? "" : "sr-only"}`}>
+          Unlimited
+        </span>
+      )}
       <span
-        className={`tile-caption ${state !== "available" || (p !== null && p < 20) ? "attention" : ""}`}
+        className={`tile-caption ${detailed ? "" : "sr-only"} ${state !== "available" || (p !== null && p < 20) ? "attention" : ""}`}
       >
         {caption}
       </span>

@@ -14,10 +14,10 @@
       {
         "label": "main",
         "title": "TokenFuel",
-        "width": 226,
-        "height": 96,
+        "width": 312,
+        "height": 60,
         "minWidth": 144,
-        "minHeight": 80,
+        "minHeight": 60,
         "decorations": false,
         "transparent": true,
         "shadow": true,

@@ -87,7 +87,7 @@ test.each(["bars", "rings"] as const)(
     expect(rows).toHaveLength(3);
     expect(
       rows.map((q) => q.querySelector(".tile-quota")?.textContent),
-    ).toEqual(["5 hours", "Weekly", "Monthly · Enterprise budget"]);
+    ).toEqual(["5h", "Week", "Monthly · Enterprise budget"]);
     expect(rows.map((q) => q.getAttribute("aria-label"))).toEqual(
       expect.arrayContaining([
         expect.stringContaining("21% remaining"),
@@ -123,14 +123,16 @@ test("pinning reorders but never removes windows, including separate feature poo
   const doc = render(limits, { pinnedLimit: "week" });
   expect(doc.querySelectorAll(".quota-window")).toHaveLength(3);
   expect(doc.querySelector(".quota-window .tile-quota")?.textContent).toBe(
-    "Weekly",
+    "Week",
   );
   expect(doc.querySelectorAll('[aria-label="Pinned quota"]')).toHaveLength(1);
 });
 
 test("a missing pin stays explicit while available weekly windows remain visible", () => {
   const doc = render([limit("week")], { pinnedLimit: "removed-monthly" });
-  expect(doc.body.textContent).toContain("Pinned limit unavailable");
+  expect(
+    doc.querySelector('[aria-label="Pinned limit unavailable"]'),
+  ).not.toBeNull();
   expect(doc.body.textContent).toContain("84%");
   expect(doc.querySelector('[aria-label="Pinned quota"]')).toBeNull();
 });

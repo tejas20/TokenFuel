@@ -1,4 +1,4 @@
-import type { Account, Limit, Provider, Settings, Snapshot } from "./types";
+import type { Account, Limit, Provider, Snapshot } from "./types";
 
 export const emptyAccount: Account = {
   id: "unconfigured",
@@ -67,11 +67,32 @@ export function quotaLabel(q: Limit): string {
 }
 
 export function widgetWidth(
-  count: number,
-  view: Settings["view"],
-  panel: boolean,
+  accounts: Account[],
+  cached: Record<string, Snapshot>,
+  focus: boolean,
 ): number {
-  if (panel) return 540;
-  // Additional accounts wrap at three columns instead of stretching across monitors.
-  return Math.min(3, Math.max(1, count)) * (view === "bars" ? 166 : 144) + 48;
+  const content = accounts.reduce((width, a) => {
+    const limits = a.enabled ? (cached[a.id]?.limits ?? []) : [];
+    return width + 36 + Math.max(1, limits.length) * 70;
+  }, 40);
+  return Math.min(480, Math.max(focus ? 300 : 180, content + (focus ? 80 : 0)));
+}
+
+export function focusedAccount(accounts: Account[], id?: string | null) {
+  return accounts.find((a) => a.enabled && a.id === id);
+}
+
+// Only shorten unambiguous generic windows. Named model and workspace pools
+// retain their names even when several pools have the same period.
+export function compactQuotaLabel(q: Limit): string {
+  const generic: Record<string, string> = {
+    "5 hours": "5h",
+    "5-hour": "5h",
+    "5h": "5h",
+    weekly: "Week",
+    monthly: "Month",
+    "monthly budget": "Monthly",
+    daily: "Day",
+  };
+  return generic[q.name.toLowerCase()] ?? quotaLabel(q);
 }

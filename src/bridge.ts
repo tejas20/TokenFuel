@@ -21,10 +21,11 @@ export const initial: Config = {
   schemaVersion: 1,
   position: null,
   settings: {
+    focusAccountId: null,
     view: demo && query.get("view") === "rings" ? "rings" : "bars",
     theme: "dark",
     opaque: false,
-    alwaysOnTop: false,
+    alwaysOnTop: true,
     startup: false,
     alerts: false,
     intervalSecs: 120,
@@ -399,7 +400,13 @@ export async function command<T = void>(
   if (desktop) return invoke<T>(name, args);
   if (name === "read_config") return preview as T;
   if (name === "save_settings")
-    preview = { ...preview, settings: args.settings as Config["settings"] };
+    preview = {
+      ...preview,
+      settings: {
+        ...preview.settings,
+        ...(args.settings as Partial<Config["settings"]>),
+      },
+    };
   else if (name === "save_account") {
     const account = args.account as Config["accounts"][0];
     const i = preview.accounts.findIndex((a) => a.id === account.id);

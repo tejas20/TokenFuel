@@ -16,7 +16,7 @@ pub async fn diagnose_codex() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({"status":s.status,"quotas":quotas}))
 }
 use chrono::Utc;
-use config::{Account, Config, Connection, Settings};
+use config::{Account, Config, Connection};
 use std::{
     collections::BTreeMap,
     path::PathBuf,
@@ -71,28 +71,46 @@ fn save_settings(
     window: tauri::WebviewWindow,
     app: tauri::AppHandle,
     state: tauri::State<State>,
-    mut settings: Settings,
+    settings: serde_json::Value,
 ) -> Result<(), String> {
     local_ui(&window)?;
+    let mut c = state.config.lock().unwrap();
+    let mut settings = config::patch_settings(&c.settings, settings)?;
     if !["bars", "rings"].contains(&settings.view.as_str())
         || !["system", "light", "dark"].contains(&settings.theme.as_str())
     {
         return Err("Invalid appearance setting.".into());
     }
     settings.interval_secs = settings.interval_secs.clamp(30, 3600);
-    if let Some(w) = app.get_webview_window("main") {
-        w.set_always_on_top(settings.always_on_top)
-            .map_err(|_| "Could not change window position preference.")?;
+    let mut next = c.clone();
+    next.settings = settings;
+    config::write(&state.path, &next)?;
+    *c = next;
+    apply_preferences(&app, &mut c);
+    Ok(())
+}
+
+fn apply_preferences(app: &tauri::AppHandle, config: &mut Config) {
+    config.settings_issues.clear();
+    if let Some(w) = app.get_webview_window("main")
+        && w.set_always_on_top(config.settings.always_on_top).is_err()
+    {
+        config
+            .settings_issues
+            .push("Always on top is saved but could not be applied. Restart TokenFuel.".into());
     }
-    if settings.startup {
-        app.autolaunch().enable()
-    } else {
-        app.autolaunch().disable()
+    let startup = app.autolaunch();
+    let result = match startup.is_enabled() {
+        Ok(enabled) if enabled == config.settings.startup => Ok(()),
+        _ if config.settings.startup => startup.enable(),
+        _ => startup.disable(),
+    };
+    if result.is_err() {
+        config.settings_issues.push(
+            "Start with Windows is saved but Windows could not apply it. Try changing it again."
+                .into(),
+        );
     }
-    .map_err(|_| "Could not change startup preference.")?;
-    let mut c = state.config.lock().unwrap();
-    c.settings = settings;
-    config::write(&state.path, &c)
 }
 fn is_local_session(conn: &Connection) -> bool {
     matches!(
@@ -242,7 +260,8 @@ fn save_account(
         *old = account;
     } else {
         account.id = uuid::Uuid::new_v4().to_string();
-        account.revision = 0;
+        // A newly saved disabled account is also an explicit user choice.
+        account.revision = 1;
         account.manual_limits.clear();
         c.accounts.push(account);
     }
@@ -258,6 +277,11 @@ fn remove_account(
     local_ui(&window)?;
     let mut c = state.config.lock().unwrap();
     credentials::delete_account_secret(&id)?;
+    if let Some(provider) = c.accounts.iter().find(|a| a.id == id).map(|a| a.provider)
+        && !c.discovered_providers.contains(&provider)
+    {
+        c.discovered_providers.push(provider);
+    }
     c.accounts.retain(|a| a.id != id);
     c.cached.remove(&id);
     if let Some(w) = app.get_webview_window(&format!("provider-{id}")) {
@@ -658,6 +682,30 @@ fn snap_window(
     c.position = Some((p.x, p.y));
     config::write(&state.path, &c)
 }
+
+fn keep_on_screen(position: i32, window: u32, origin: i32, available: u32) -> i32 {
+    let end = (i64::from(origin) + i64::from(available) - i64::from(window)).max(i64::from(origin));
+    i64::from(position).clamp(i64::from(origin), end) as i32
+}
+
+#[cfg(test)]
+mod window_position_tests {
+    use super::keep_on_screen;
+
+    #[test]
+    fn expanding_panels_fit_at_bottom_and_right_edges() {
+        assert_eq!(keep_on_screen(700, 350, 0, 760), 410);
+        assert_eq!(keep_on_screen(1800, 552, 0, 1920), 1368);
+        assert_eq!(keep_on_screen(200, 350, 0, 760), 200);
+    }
+
+    #[test]
+    fn negative_monitor_origins_and_oversized_windows_are_safe() {
+        assert_eq!(keep_on_screen(-100, 492, -1920, 1920), -492);
+        assert_eq!(keep_on_screen(-2000, 492, -1920, 1920), -1920);
+        assert_eq!(keep_on_screen(10, 850, -100, 720), -100);
+    }
+}
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
@@ -687,19 +735,20 @@ pub fn run() {
         ])
         .setup(|app| {
             let path = app.path().app_config_dir()?.join("config.json");
-            let config = config::read(&path);
-            if let Some(w) = app.get_webview_window("main") {
-                w.set_always_on_top(config.settings.always_on_top)?;
-                if let Some((x, y)) = config.position
-                    && w.available_monitors()?.iter().any(|m| {
-                        x >= m.position().x
-                            && y >= m.position().y
-                            && x < m.position().x + m.size().width as i32
-                            && y < m.position().y + m.size().height as i32
-                    })
-                {
-                    w.set_position(tauri::PhysicalPosition::new(x, y))?;
-                }
+            let mut config = config::read(&path).map_err(std::io::Error::other)?;
+            providers::discover(&mut config);
+            config::write(&path, &config).map_err(std::io::Error::other)?;
+            apply_preferences(app.handle(), &mut config);
+            if let Some(w) = app.get_webview_window("main")
+                && let Some((x, y)) = config.position
+                && w.available_monitors()?.iter().any(|m| {
+                    x >= m.position().x
+                        && y >= m.position().y
+                        && x < m.position().x + m.size().width as i32
+                        && y < m.position().y + m.size().height as i32
+                })
+            {
+                w.set_position(tauri::PhysicalPosition::new(x, y))?;
             }
             app.manage(State {
                 config: Mutex::new(config),
@@ -758,7 +807,9 @@ pub fn run() {
                     let _ = w.hide();
                 }
                 if let tauri::WindowEvent::Moved(p) = event {
-                    let state = w.state::<State>();
+                    let Some(state) = w.try_state::<State>() else {
+                        return;
+                    };
                     state.config.lock().unwrap().position = Some((p.x, p.y));
                     let generation = state.movement.fetch_add(1, Ordering::SeqCst) + 1;
                     let app = w.app_handle().clone();
@@ -771,6 +822,20 @@ pub fn run() {
                             let _ = snap_window(window, app.clone(), state);
                         }
                     });
+                }
+                if let tauri::WindowEvent::Resized(_) = event
+                    && w.try_state::<State>().is_some()
+                    && let (Ok(Some(m)), Ok(size), Ok(position)) =
+                        (w.current_monitor(), w.outer_size(), w.outer_position())
+                {
+                    let area = m.work_area();
+                    let next = tauri::PhysicalPosition::new(
+                        keep_on_screen(position.x, size.width, area.position.x, area.size.width),
+                        keep_on_screen(position.y, size.height, area.position.y, area.size.height),
+                    );
+                    if next != position {
+                        let _ = w.set_position(next);
+                    }
                 }
             }
         })

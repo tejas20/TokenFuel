@@ -4,6 +4,7 @@ import {
   emptyAccount,
   visibleAccounts,
   widgetWidth,
+  focusedAccount,
 } from "./widget";
 import type { Account } from "./types";
 const account = (id: string, change: Partial<Account> = {}): Account => ({
@@ -42,10 +43,25 @@ test("temporary poll failures cannot hide enabled accounts; duplicate providers 
   expect(visibleAccounts(all)).toEqual(all); // No dependency on cache or poll status.
   expect(accountName(all[0])).toBe("Codex");
 });
-test("widget shrinks with account count and view, but panels have usable space", () => {
-  expect(widgetWidth(1, "bars", false)).toBe(214);
-  expect(widgetWidth(2, "bars", false)).toBe(380);
-  expect(widgetWidth(2, "rings", false)).toBe(336);
-  expect(widgetWidth(5, "bars", false)).toBe(546);
-  expect(widgetWidth(1, "rings", true)).toBe(540);
+test("strip width is bounded and focus keeps a readable minimum", () => {
+  expect(widgetWidth([account("one")], {}, false)).toBe(180);
+  expect(widgetWidth([account("one")], {}, true)).toBe(300);
+  expect(
+    widgetWidth(
+      Array.from({ length: 8 }, (_, i) => account(String(i))),
+      {},
+      false,
+    ),
+  ).toBe(480);
+});
+
+test("focus selects an enabled account by identity, falling back after disable or removal", () => {
+  const all = [
+    account("work", { enabled: true }),
+    account("personal", { enabled: true }),
+  ];
+  expect(focusedAccount(all, "personal")).toBe(all[1]);
+  expect(focusedAccount(all, "deleted")).toBeUndefined();
+  expect(focusedAccount([account("personal")], "personal")).toBeUndefined();
+  expect(focusedAccount(all, null)).toBeUndefined();
 });

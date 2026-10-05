@@ -66,6 +66,7 @@ export interface Account {
   hasCustomSecret?: boolean;
 }
 export interface Settings {
+  focusAccountId?: string | null;
   view: "bars" | "rings";
   theme: "system" | "dark" | "light";
   opaque: boolean;
@@ -76,6 +77,8 @@ export interface Settings {
   snapToEdges: boolean;
 }
 export interface Config {
+  settingsIssues?: string[];
+  discoveredProviders?: Provider[];
   schemaVersion: number;
   settings: Settings;
   accounts: Account[];

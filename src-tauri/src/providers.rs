@@ -98,13 +98,26 @@ pub fn codex_path(account: &Account) -> Option<PathBuf> {
         return None;
     }
     for dir in std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()) {
-        let p = dir.join("codex.exe");
-        if p.is_file() {
+        if let Some(p) = codex_in_directory(&dir) {
+            return Some(p);
+        }
+    }
+    for dir in [
+        std::env::var_os("APPDATA").map(|p| PathBuf::from(p).join("npm")),
+        std::env::var_os("USERPROFILE").map(|p| PathBuf::from(p).join(".local/bin")),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if let Some(p) = codex_in_directory(&dir) {
             return Some(p);
         }
     }
     if let Some(local) = std::env::var_os("LOCALAPPDATA") {
         let dir = PathBuf::from(local).join("OpenAI/Codex/bin");
+        if dir.join("codex.exe").is_file() {
+            return Some(dir.join("codex.exe"));
+        }
         let mut candidates: Vec<_> = std::fs::read_dir(dir)
             .ok()?
             .filter_map(Result::ok)
@@ -115,6 +128,111 @@ pub fn codex_path(account: &Account) -> Option<PathBuf> {
         return candidates.pop();
     }
     None
+}
+
+fn codex_in_directory(dir: &std::path::Path) -> Option<PathBuf> {
+    [
+        "codex.exe",
+        "node_modules/@openai/codex/vendor/x86_64-pc-windows-msvc/codex/codex.exe",
+        "node_modules/@openai/codex/node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/codex/codex.exe",
+        "node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/codex/codex.exe",
+    ].into_iter().map(|relative| dir.join(relative)).find(|path| path.is_file())
+}
+
+/// Discover only sources the adapters can actually read. Existing user choices win.
+pub fn discover(config: &mut crate::config::Config) {
+    discover_with(config, local_source_present);
+}
+
+fn discover_with(config: &mut crate::config::Config, present: impl Fn(&Account) -> bool) {
+    for template in crate::config::Config::default().accounts {
+        let provider = template.provider;
+        if config.discovered_providers.contains(&provider) {
+            continue;
+        }
+        let existing = config.accounts.iter().position(|a| a.provider == provider);
+        if config.accounts.iter().any(|a| {
+            a.provider == provider
+                && (a.enabled
+                    || a.revision > 0
+                    || a.connection != template.connection
+                    || a.has_custom_secret)
+        }) {
+            config.discovered_providers.push(provider);
+            continue;
+        }
+        if !present(&template) {
+            continue;
+        }
+        let index = existing.unwrap_or_else(|| {
+            config.accounts.push(template);
+            config.accounts.len() - 1
+        });
+        let account = &mut config.accounts[index];
+        account.enabled = true;
+        account.experimental = account.connection.requires_experimental_opt_in();
+        account.revision = account.revision.saturating_add(1);
+        config.discovered_providers.push(provider);
+    }
+}
+
+fn local_source_present(account: &Account) -> bool {
+    let file = |root: &str, relative: &str| {
+        std::env::var_os(root).is_some_and(|p| PathBuf::from(p).join(relative).is_file())
+    };
+    let env = |name: &str| std::env::var_os(name).is_some_and(|v| !v.is_empty());
+    match account.connection {
+        Connection::CodexCli => codex_path(account).is_some(),
+        Connection::ClaudeCli => claude_credentials_path(account).is_some_and(|p| p.is_file()),
+        Connection::CursorLocal => {
+            cursor_state_db_path(account).is_some() || env("CURSOR_SESSION_TOKEN")
+        }
+        Connection::GrokCli => {
+            grok_auth_path(account).is_some()
+                || ["GROK_API_KEY", "XAI_API_KEY", "GROK_SESSION_TOKEN"]
+                    .iter()
+                    .any(|v| env(v))
+        }
+        Connection::CopilotCli => {
+            !copilot_cli_credentials().is_empty()
+                || !gh_cli_credentials().is_empty()
+                || !copilot_file_credentials().is_empty()
+                || [
+                    "COPILOT_GITHUB_TOKEN",
+                    "GH_TOKEN",
+                    "GITHUB_TOKEN",
+                    "COPILOT_TOKEN",
+                ]
+                .iter()
+                .any(|v| env(v))
+        }
+        Connection::AntigravityLocal => read_antigravity_token_data(account).is_some(),
+        Connection::OpencodeGo => {
+            (env("OPENCODE_GO_AUTH_COOKIE") && env("OPENCODE_GO_WORKSPACE_ID"))
+                || std::env::var_os("OPENCODE_GO_CONFIG_FILE")
+                    .is_some_and(|p| PathBuf::from(p).is_file())
+                || file("APPDATA", "opencode-go/config.json")
+                || file("USERPROFILE", ".config/opencode-bar/opencode-go.json")
+                || file("USERPROFILE", ".config/opencode-quota/opencode-go.json")
+        }
+        // Gemini's adapter needs its own isolated browser sign-in.
+        _ => false,
+    }
+}
+
+fn claude_credentials_path(account: &Account) -> Option<PathBuf> {
+    account
+        .credential_path
+        .as_ref()
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("CLAUDE_CONFIG_DIR")
+                .map(|p| PathBuf::from(p).join(".credentials.json"))
+        })
+        .or_else(|| {
+            std::env::var_os("USERPROFILE")
+                .map(|p| PathBuf::from(p).join(".claude/.credentials.json"))
+        })
 }
 
 pub async fn codex(account: &Account) -> Result<Snapshot, Failure> {
@@ -204,14 +322,7 @@ pub async fn claude(account: &Account) -> Result<Snapshot, Failure> {
             "Enable experimental access before reading a Claude session.",
         ));
     }
-    let path = account
-        .credential_path
-        .as_ref()
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("USERPROFILE")
-                .map(|h| PathBuf::from(h).join(".claude/.credentials.json"))
-        })
+    let path = claude_credentials_path(account)
         .ok_or_else(|| Failure::new(Status::LoginRequired, "Claude credentials were not found."))?;
     let raw = std::fs::read(&path).map_err(|_| {
         Failure::new(
@@ -1678,6 +1789,60 @@ pub fn safe_navigation(url: &tauri::Url, provider: Provider) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn codex_discovery_finds_native_and_npm_binaries() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(codex_in_directory(dir.path()).is_none());
+        let npm = dir
+            .path()
+            .join("node_modules/@openai/codex/vendor/x86_64-pc-windows-msvc/codex/codex.exe");
+        std::fs::create_dir_all(npm.parent().unwrap()).unwrap();
+        std::fs::write(&npm, []).unwrap();
+        assert_eq!(codex_in_directory(dir.path()), Some(npm));
+        let native = dir.path().join("codex.exe");
+        std::fs::write(&native, []).unwrap();
+        assert_eq!(codex_in_directory(dir.path()), Some(native));
+    }
+    #[test]
+    fn discovery_connects_local_sources_and_respects_user_choices() {
+        let mut config = crate::config::Config::default();
+        discover_with(&mut config, |a| a.provider != Provider::Gemini);
+        assert_eq!(config.accounts.iter().filter(|a| a.enabled).count(), 7);
+        assert!(
+            config
+                .accounts
+                .iter()
+                .filter(|a| a.enabled && a.connection.requires_experimental_opt_in())
+                .all(|a| a.experimental)
+        );
+        config.accounts[0].enabled = false;
+        config.accounts.retain(|a| a.provider != Provider::Cursor);
+        discover_with(&mut config, |_| true);
+        assert!(!config.accounts[0].enabled);
+        assert!(
+            !config
+                .accounts
+                .iter()
+                .any(|a| a.provider == Provider::Cursor)
+        );
+    }
+
+    #[test]
+    fn discovery_retries_missing_sources_without_enabling_edited_accounts() {
+        let mut config = crate::config::Config::default();
+        config.accounts[0].revision = 1;
+        discover_with(&mut config, |_| false);
+        discover_with(&mut config, |a| {
+            a.provider == Provider::Claude || a.provider == Provider::Openai
+        });
+        assert!(!config.accounts[0].enabled);
+        assert!(
+            config
+                .accounts
+                .iter()
+                .any(|a| a.provider == Provider::Claude && a.enabled)
+        );
+    }
     #[test]
     fn missing_custom_secrets_fail_before_any_local_fallback_or_network_read() {
         let mut account = crate::config::Config::default().accounts.remove(0);

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import {
   GearSix,
@@ -10,16 +10,25 @@ import {
   Trash,
   Circle,
   ChartBar,
+  DotsThree,
+  CaretDown,
+  SquaresFour,
 } from "@phosphor-icons/react";
 import "react-circular-progressbar/dist/styles.css";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import { listen } from "@tauri-apps/api/event";
 import { command, desktop, demo, initial } from "./bridge";
-import { countdown, percent } from "./format";
-import { QuotaTile } from "./QuotaTile";
-import { accountName, visibleAccounts, widgetWidth } from "./widget";
-import type { Account, Config, Limit, Provider } from "./types";
+import { QuotaTile, QuotaWindow } from "./QuotaTile";
+import {
+  accountName,
+  focusedAccount,
+  visibleAccounts,
+  visibleLimits,
+  widgetWidth,
+} from "./widget";
+import { displayStatus } from "./freshness";
+import type { Account, Config, Provider } from "./types";
 import "./style.css";
 import "./compact.css";
 import { getVersion } from "@tauri-apps/api/app";
@@ -35,27 +44,20 @@ const names: Record<Provider, string> = {
   unknown: "Unknown",
 };
 const connectionHints: Record<Account["connection"], string> = {
-  codexCli:
-    "Automatically finds the installed Codex app or CLI and uses its current sign-in after you allow access. No token to copy. Tracks Codex allowances; ordinary ChatGPT counters are unavailable.",
-  claudeCli:
-    "Automatically uses the current Claude Code sign-in after you allow access. No token to copy. Experimental; availability depends on your plan.",
-  cursorLocal:
-    "Automatically finds the current Cursor sign-in after you allow access. No token to copy. Experimental; sign in to Cursor first.",
-  copilotCli:
-    "Automatically looks for an existing Copilot CLI or GitHub CLI sign-in after you allow access. No token to copy. Live account verification is still needed.",
-  grokCli:
-    "Automatically looks for an existing Grok CLI sign-in after you allow access. Tracks Grok Build credits; ordinary Grok chat allowances are unavailable.",
-  antigravityLocal:
-    "Automatically looks for an existing Antigravity sign-in after you allow access. Experimental; live account verification is still needed.",
+  codexCli: "Automatically finds Codex. Tracks Codex allowances only.",
+  claudeCli: "Uses your Claude Code sign-in. Experimental.",
+  cursorLocal: "Uses your Cursor sign-in. Experimental.",
+  copilotCli: "Uses your Copilot or GitHub CLI sign-in.",
+  grokCli: "Uses Grok CLI sign-in. Build credits only.",
+  antigravityLocal: "Uses your Antigravity sign-in. Experimental.",
   opencodeGo:
-    "Uses an existing OpenCode Go monitor configuration if available. Otherwise enter the workspace ID and session cookie in Advanced connection settings. Experimental.",
+    "Uses your Go monitor configuration. Otherwise, add details in Advanced.",
   geminiWeb:
-    "Save both permissions, then open the isolated Usage window and sign in. Keep it open for automatic refresh. Sign-in is temporary; some SSO accounts need the manual option.",
+    "Sign in below and keep the Usage window open. Sign-in lasts this session.",
   browser:
-    "Save both permissions, then open the isolated Usage window and sign in. Refresh reads a snapshot of visible usage. Sign-in is temporary; automatic tracking is unavailable with this source.",
-  manual:
-    "Enter the allowance yourself. This snapshot does not update automatically.",
-  unknown: "Choose a supported connection source.",
+    "Sign in below, then capture visible usage. Manual refresh; session-only sign-in.",
+  manual: "A snapshot you update yourself.",
+  unknown: "Choose a connection source.",
 };
 const secretConnections: Account["connection"][] = [
   "opencodeGo",
@@ -68,16 +70,18 @@ export default function App() {
   const [config, setConfig] = useState<Config>(initial),
     [version, setVersion] = useState(""),
     [settings, setSettings] = useState(false),
+    [menu, setMenu] = useState(false),
     [expanded, setExpanded] = useState<string | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [now, setNow] = useState(Date.now());
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const detailTrigger = useRef<HTMLButtonElement | null>(null);
+  const dockRef = useRef<HTMLElement>(null);
   useEffect(() => {
     command<Config>("read_config")
       .then((loaded) => {
         setConfig(loaded);
-        if (!demo && !loaded.accounts.some((account) => account.enabled))
-          setSettings(true);
       })
       .catch((e) => setError(String(e)));
     if (desktop)
@@ -86,11 +90,17 @@ export default function App() {
         .catch(() => {});
     const timer = setInterval(() => setNow(Date.now()), 30000);
     let dispose: (() => void) | undefined;
+    let disposed = false;
     if (desktop)
       listen<Config>("usage-updated", (e) => setConfig(e.payload)).then(
-        (f) => (dispose = f),
+        (f) => {
+          if (disposed) f();
+          else dispose = f;
+        },
+        (e) => setError(String(e)),
       );
     return () => {
+      disposed = true;
       clearInterval(timer);
       dispose?.();
     };
@@ -110,11 +120,90 @@ export default function App() {
     }
   }
   async function preference(change: Partial<Config["settings"]>) {
-    await run("save_settings", { settings: { ...config.settings, ...change } });
+    await run("save_settings", { settings: change });
   }
   const accounts = visibleAccounts(config.accounts);
-  const panel = settings || expanded !== null;
-  const width = widgetWidth(accounts.length, config.settings.view, panel);
+  const focus = focusedAccount(accounts, config.settings.focusAccountId);
+  const shownAccounts = focus ? [focus] : accounts;
+  const detailAccount = config.accounts.find(
+    (a) => a.id === expanded && a.enabled,
+  );
+  const hiddenLow = focus
+    ? accounts.filter(
+        (a) =>
+          a.id !== focus.id &&
+          config.cached[a.id]?.limits.some(
+            (q) =>
+              q.remainingPercent !== null &&
+              q.remainingPercent < 20 &&
+              displayStatus(
+                config.cached[a.id],
+                q,
+                now,
+                config.settings.intervalSecs,
+                a.connection === "browser",
+              ) === "available",
+          ),
+      ).length
+    : 0;
+  const issues = [
+    ...(config.settingsIssues ?? []),
+    ...config.accounts.flatMap((a) => {
+      const snapshot = config.cached[a.id];
+      if (!a.enabled || !snapshot) return [];
+      const stale = snapshot.limits.some(
+        (q) =>
+          displayStatus(
+            snapshot,
+            q,
+            now,
+            config.settings.intervalSecs,
+            a.connection === "browser",
+          ) === "stale",
+      );
+      if (snapshot.status === "available" && !stale) return [];
+      const message =
+        snapshot.status === "available"
+          ? "Cached usage is stale. Try Refresh."
+          : snapshot.message || "Usage unavailable. Try Refresh.";
+      return [`${names[a.provider]} · ${a.label}: ${message}`];
+    }),
+  ];
+  const panel = settings || !!detailAccount || menu;
+  const barWidth = widgetWidth(shownAccounts, config.cached, !!focus);
+  const width = settings ? 540 : Math.max(barWidth, panel ? 340 : 0);
+  useEffect(() => {
+    if (expanded && !detailAccount) setExpanded(null);
+  }, [expanded, detailAccount]);
+  useEffect(() => {
+    function dismiss(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setExpanded(null);
+      setMenu(false);
+      setSettings(false);
+      (detailAccount ? detailTrigger.current : menuButton.current)?.focus();
+    }
+    function outside(event: PointerEvent) {
+      if (!dockRef.current?.contains(event.target as Node)) {
+        setExpanded(null);
+        setMenu(false);
+      }
+    }
+    document.addEventListener("keydown", dismiss);
+    document.addEventListener("pointerdown", outside);
+    return () => {
+      document.removeEventListener("keydown", dismiss);
+      document.removeEventListener("pointerdown", outside);
+    };
+  }, [detailAccount]);
+  async function selectFocus(id: string | null) {
+    if (await run("save_settings", { settings: { focusAccountId: id } })) {
+      setExpanded(null);
+      setSettings(false);
+      setMenu(false);
+      menuButton.current?.focus();
+    }
+  }
   // Observe content dimensions, not the current native width: closing a panel
   // must return to the selected compact footprint without a resize feedback loop.
   useEffect(() => {
@@ -136,25 +225,57 @@ export default function App() {
   }, []);
   async function drag() {
     if (!desktop) return;
-    await getCurrentWindow().startDragging();
-    await command("snap_window");
+    try {
+      await getCurrentWindow().startDragging();
+      await command("snap_window");
+    } catch (e) {
+      setError(String(e));
+    }
   }
   return (
     <main
-      className={`dock compact ${config.settings.opaque ? "opaque" : ""} view-${config.settings.view} ${panel ? "panel-open" : ""}`}
+      ref={dockRef}
+      className={`dock compact ${config.settings.opaque ? "opaque" : ""} view-${config.settings.view} ${focus ? "focus-mode" : ""} ${panel ? "panel-open" : ""}`}
       style={{ width }}
       data-theme={config.settings.theme}
       data-desktop={desktop}
     >
-      <div className="compact-surface">
+      <div
+        className="compact-surface"
+        style={{ width: settings ? "100%" : barWidth }}
+      >
+        <span
+          className="drag-edge"
+          title="Drag widget"
+          onPointerDown={drag}
+          aria-hidden="true"
+        />
+        {settings ? (
+          <strong className="bar-title">TokenFuel</strong>
+        ) : (
+          focus && (
+            <button
+              className={`focus-selector provider ${focus.provider}`}
+              aria-label={`Switch focused account · ${accountName(focus)} · ${focus.label}`}
+              aria-expanded={menu}
+              aria-controls="widget-menu"
+              onClick={() => {
+                setMenu(!menu);
+                setExpanded(null);
+              }}
+            >
+              <img src={`/providers/${focus.provider}.svg`} alt="" />
+              <span>{accountName(focus)}</span>
+              <CaretDown />
+            </button>
+          )
+        )}
         <section
           className="accounts"
           aria-label="Remaining allowances"
-          style={{
-            gridTemplateColumns: `repeat(${Math.min(3, accounts.length)}, minmax(0, 1fr))`,
-          }}
+          hidden={settings}
         >
-          {accounts.map((a) => (
+          {shownAccounts.map((a) => (
             <QuotaTile
               key={a.id}
               account={a}
@@ -162,7 +283,11 @@ export default function App() {
               settings={config.settings}
               now={now}
               expanded={expanded === a.id}
+              focused={!!focus}
               onClick={() => {
+                detailTrigger.current =
+                  document.activeElement as HTMLButtonElement;
+                setMenu(false);
                 if (
                   !a.enabled ||
                   !config.accounts.some((saved) => saved.id === a.id)
@@ -179,13 +304,101 @@ export default function App() {
         </section>
         <div className="compact-tools" aria-label="TokenFuel controls">
           <button
-            aria-label="Refresh"
-            title="Refresh usage"
-            disabled={busy}
-            onClick={() => run("refresh")}
+            ref={menuButton}
+            aria-label={`Widget menu${hiddenLow ? ` · ${hiddenLow} other accounts running low` : ""}${issues.length ? " · connection issues" : ""}`}
+            aria-expanded={menu}
+            aria-controls="widget-menu"
+            title={
+              hiddenLow
+                ? `${hiddenLow} other accounts running low`
+                : issues.length
+                  ? "Menu · connection issues"
+                  : "Menu · refresh, focus and settings"
+            }
+            className={hiddenLow || issues.length ? "menu-warning" : undefined}
+            onClick={() => {
+              setMenu(!menu);
+              setExpanded(null);
+              setSettings(false);
+            }}
           >
-            <ArrowClockwise className={busy ? "spinning" : ""} />
+            <DotsThree weight="bold" />
+            {(hiddenLow > 0 || issues.length > 0) && (
+              <span className="menu-indicator">{hiddenLow || "!"}</span>
+            )}
           </button>
+        </div>
+      </div>
+      {menu && (
+        <section
+          id="widget-menu"
+          className="widget-menu popover"
+          aria-label="Widget menu"
+        >
+          <div className="section-title">
+            <strong>TokenFuel</strong>
+            <button
+              aria-label="Close menu"
+              onClick={() => {
+                setMenu(false);
+                menuButton.current?.focus();
+              }}
+            >
+              <X />
+            </button>
+          </div>
+          <button disabled={busy} onClick={() => run("refresh")}>
+            <ArrowClockwise className={busy ? "spinning" : ""} />
+            {busy ? "Refreshing…" : "Refresh usage"}
+          </button>
+          <button
+            aria-pressed={config.settings.alwaysOnTop}
+            disabled={busy}
+            onClick={() =>
+              preference({ alwaysOnTop: !config.settings.alwaysOnTop })
+            }
+          >
+            <PushPin
+              weight={config.settings.alwaysOnTop ? "fill" : "regular"}
+            />
+            Always on top{" "}
+            <small>{config.settings.alwaysOnTop ? "On" : "Off"}</small>
+          </button>
+          <div className="menu-section">View</div>
+          <button
+            aria-pressed={!focus}
+            disabled={busy}
+            onClick={() => selectFocus(null)}
+          >
+            <SquaresFour />
+            All accounts
+          </button>
+          {accounts
+            .filter((a) => a.enabled)
+            .map((a) => (
+              <button
+                key={a.id}
+                className={`focus-option provider ${a.provider}`}
+                disabled={busy}
+                aria-pressed={focus?.id === a.id}
+                onClick={() => selectFocus(a.id)}
+              >
+                <img src={`/providers/${a.provider}.svg`} alt="" />
+                <span>
+                  Focus {accountName(a)}
+                  <small>
+                    {[a.label, a.workspace].filter(Boolean).join(" · ")}
+                  </small>
+                </span>
+              </button>
+            ))}
+          {hiddenLow > 0 && (
+            <p className="attention">
+              {hiddenLow} other accounts have a low allowance. Switch to All
+              accounts to check them.
+            </p>
+          )}
+          <div className="menu-section">Appearance & connections</div>
           <button
             aria-label={
               config.settings.view === "bars"
@@ -193,6 +406,7 @@ export default function App() {
                 : "Show bar view"
             }
             title="Switch bars / rings"
+            disabled={busy}
             onClick={() =>
               preference({
                 view: config.settings.view === "bars" ? "rings" : "bars",
@@ -200,17 +414,30 @@ export default function App() {
             }
           >
             {config.settings.view === "bars" ? <Circle /> : <ChartBar />}
+            {config.settings.view === "bars"
+              ? "Show ring view"
+              : "Show bar view"}
           </button>
           <button
             aria-label="Settings"
             aria-expanded={settings}
-            title="Settings"
+            title={
+              issues.length
+                ? "Settings · " + issues.length + " issues"
+                : "Settings"
+            }
+            className={issues.length ? "settings-warning" : undefined}
             onClick={() => {
               setSettings(!settings);
               setExpanded(null);
+              setMenu(false);
             }}
           >
             <GearSix />
+            Settings
+            {issues.length > 0 && (
+              <span aria-label={issues.length + " settings issues"}>!</span>
+            )}
           </button>
           <button
             aria-label="Drag widget"
@@ -218,9 +445,10 @@ export default function App() {
             onPointerDown={drag}
           >
             <DotsSix />
+            Move widget
           </button>
-        </div>
-      </div>
+        </section>
+      )}
       {(demo || !desktop) && (
         <div className="preview-label">
           {demo
@@ -228,18 +456,29 @@ export default function App() {
             : "Browser preview · use Windows app to connect"}
         </div>
       )}
-      {expanded && (
-        <section className="details">
+      {detailAccount && (
+        <section
+          className={`details popover provider ${detailAccount.provider}`}
+          aria-label={`${accountName(detailAccount)} quota details`}
+        >
           {(() => {
-            const a = config.accounts.find((a) => a.id === expanded)!;
+            const a = detailAccount;
             const s = config.cached[a.id];
             return (
               <>
                 <div className="section-title">
-                  <strong>All limits · {accountName(a)}</strong>
+                  <div className="detail-heading">
+                    <img src={`/providers/${a.provider}.svg`} alt="" />
+                    <strong>
+                      {accountName(a)} <small>· {a.label}</small>
+                    </strong>
+                  </div>
                   <button
                     aria-label="Close details"
-                    onClick={() => setExpanded(null)}
+                    onClick={() => {
+                      setExpanded(null);
+                      detailTrigger.current?.focus();
+                    }}
                   >
                     <X />
                   </button>
@@ -250,31 +489,45 @@ export default function App() {
                     {s.identity.plan ? ` · ${s.identity.plan}` : ""}
                   </p>
                 )}
-                <p>
-                  {a.label}
-                  {a.workspace ? ` · ${a.workspace}` : ""}
-                </p>
-                <p>
-                  {s?.message ||
-                    "Connect this account in settings to read its allowance."}
-                </p>
-                {s?.limits.map((q) => (
+                {a.workspace && (
+                  <p>
+                    {a.label}
+                    {a.workspace ? ` · ${a.workspace}` : ""}
+                  </p>
+                )}
+                {s?.message && s.status !== "available" && (
+                  <p role="status">
+                    {s?.message ||
+                      "Connect this account in settings to read its allowance."}
+                  </p>
+                )}
+                {(!s || !s.limits.length) && (
+                  <p>
+                    {s?.message ||
+                      "No allowance reported yet. Try Refresh or check this connection in Settings."}
+                  </p>
+                )}
+                {visibleLimits(s, a.pinnedLimit).map((q) => (
                   <div className="limit-row" key={q.id}>
-                    <div>
-                      <strong>{q.name}</strong>
+                    <div className="detail-quota-body">
+                      <QuotaWindow
+                        account={a}
+                        snapshot={s}
+                        quota={q}
+                        settings={config.settings}
+                        now={now}
+                        detailed
+                      />
                       <small>
-                        {q.product} · {q.scope} · {q.period} · {q.source}
-                      </small>
-                      <small>
-                        {q.resetsAt
-                          ? countdown(q.resetsAt, now)
-                          : q.resetLabel || "Reset not reported"}{" "}
-                        · {q.source === "manual" ? "Snapshot" : "Checked"}{" "}
-                        {Math.max(
-                          0,
-                          Math.floor((now - Date.parse(q.observedAt)) / 60000),
-                        )}
-                        m ago
+                        {q.product} · {q.scope} · {q.source} ·{" "}
+                        {Number.isFinite(Date.parse(q.observedAt))
+                          ? Math.max(
+                              0,
+                              Math.floor(
+                                (now - Date.parse(q.observedAt)) / 60000,
+                              ),
+                            ) + "m ago"
+                          : "Age unknown"}
                       </small>
                       {q.used !== null && (
                         <small>
@@ -285,21 +538,16 @@ export default function App() {
                         </small>
                       )}
                     </div>
-                    <span>
-                      {q.unlimited
-                        ? "Unlimited"
-                        : q.remainingPercent === null
-                          ? q.remaining
-                            ? `${q.remaining} ${q.unit}`
-                            : "Limit not reported"
-                          : percent(q.remainingPercent)}
-                    </span>
                     <button
                       aria-label={`Pin ${q.name}`}
                       aria-pressed={a.pinnedLimit === q.id}
+                      disabled={busy}
                       onClick={() =>
                         run("save_account", {
-                          account: { ...a, pinnedLimit: q.id },
+                          account: {
+                            ...a,
+                            pinnedLimit: a.pinnedLimit === q.id ? null : q.id,
+                          },
                         })
                       }
                     >
@@ -309,6 +557,26 @@ export default function App() {
                     </button>
                   </div>
                 ))}
+                <div className="detail-actions">
+                  <button
+                    className="primary"
+                    disabled={busy}
+                    onClick={() =>
+                      selectFocus(focus?.id === a.id ? null : a.id)
+                    }
+                  >
+                    {focus?.id === a.id
+                      ? "Show all accounts"
+                      : "Focus this account"}
+                  </button>
+                  <small>
+                    {demo
+                      ? "Sample data"
+                      : a.experimental
+                        ? "Experimental connection"
+                        : "Remaining allowances"}
+                  </small>
+                </div>
                 {s?.retryAt && (
                   <small>
                     Next attempt: {new Date(s.retryAt).toLocaleTimeString()}
@@ -386,20 +654,29 @@ export default function App() {
               </select>
             </label>
           </div>
+          {issues.length > 0 && (
+            <div className="error" role="status">
+              {issues.map((issue, i) => (
+                <p key={i}>{issue}</p>
+              ))}
+            </div>
+          )}
           <p className="hint">
-            Only enabled connections appear in the widget. If none are enabled,
-            one account stays visible to help you connect. Temporary failures
-            keep the account visible.
-          </p>
-          <p className="hint">
-            Choose your provider, allow access, and Save. Supported connections
-            find your existing sign-in automatically; you usually do not need a
-            token. Connections stay on this device. Browser sign-in windows are
-            isolated and session-only. Gemini live view reloads its Usage page;
-            the capture source requires explicit refresh.
+            Local connections are detected at launch. Enable or disable them
+            below.
           </p>
           {config.accounts.map((a) => (
-            <AccountEditor key={a.id} account={a} run={run} />
+            <details key={a.id} className="connection-section">
+              <summary>
+                {names[a.provider]} ·{" "}
+                {a.enabled
+                  ? "Enabled"
+                  : a.provider === "gemini"
+                    ? "Sign-in needed"
+                    : "Disabled"}
+              </summary>
+              <AccountEditor account={a} run={run} />
+            </details>
           ))}
           <button
             className="add"
@@ -417,12 +694,6 @@ export default function App() {
           >
             <Plus /> Add account
           </button>
-          <small className="hint">
-            New providers are provisional until verified with your live account.
-            Claude Enterprise monthly limits require office verification.
-            Ordinary ChatGPT counters remain unsupported; Gemini live polling
-            needs isolated-window verification.
-          </small>
         </section>
       )}
       {error && (
@@ -569,11 +840,7 @@ export function AccountEditor({
                 setDraft({ ...draft, enabled: e.target.checked })
               }
             />
-            Allow connection{" "}
-            {draft.connection.endsWith("Cli") ||
-            draft.connection.endsWith("Local")
-              ? "and local session access"
-              : ""}
+            Enabled
           </label>
         )}
         {(draft.connection === "browser" ||
@@ -631,10 +898,8 @@ export function AccountEditor({
           draft.connection === a.connection && (
             <>
               <p className="hint">
-                Use an account-specific secret only if automatic sign-in is
-                unavailable or you need a separate account. Saved secrets stay
-                in Windows Credential Manager. Save the account before adding a
-                secret.
+                Optional account secret, protected by Windows Credential
+                Manager. Save the account first.
               </p>
 
               <div className="edit-row">

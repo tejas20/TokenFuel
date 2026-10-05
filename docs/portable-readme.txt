@@ -3,8 +3,8 @@ TokenFuel 0.1.0 for Windows 10/11 x64
 Extract the ZIP and double-click TokenFuel.exe. No developer tools are needed.
 If WebView2 is missing, use the regular installer or offline installer instead.
 
-Choose your provider, allow the connection, and Save. Supported sources reuse
-an existing signed-in app or CLI after permission. New provider integrations
+The usage widget opens first. Supported local sources are detected and enabled
+automatically. Use Settings to review issues or disable connections. New provider integrations
 are provisional and must be compared with your provider's actual Usage page.
 OpenAI shows Codex allowances, not every ChatGPT model's usage.
 
@@ -21,4 +21,4 @@ https://github.com/tejas20/TokenFuel/releases/tag/v0.1.0
 https://github.com/tejas20/TokenFuel/blob/main/docs/installation.md
 
 This build is unsigned. Checksums check integrity, not publisher identity.
-The repository is private; downloads require repository read access.
+If hosted in a private repository, downloads require repository read access.

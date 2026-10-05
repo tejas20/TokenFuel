@@ -1,0 +1,28 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug TokenFuel (Desktop)",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/target/debug/tokenfuel.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "Desktop: Prepare Debug Build"
+    },
+    {
+      "name": "Launch Edge to Vite Preview",
+      "type": "msedge",
+      "request": "launch",
+      "url": "http://127.0.0.1:1420/?demo=1",
+      "webRoot": "${workspaceFolder}/src"
+    },
+    {
+      "name": "Launch Chrome to Vite Preview",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://127.0.0.1:1420/?demo=1",
+      "webRoot": "${workspaceFolder}/src"
+    }
+  ]
+}

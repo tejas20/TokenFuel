@@ -1,28 +1,36 @@
 # TokenFuel
 
-A Windows desktop widget for remaining AI subscription allowances. First release: **0.1.0**; MIT licensed. The compact soft-glass widget switches between Slim Strip and Mini Rings. Each connected account shows all reported quota windows separately, including weekly and monthly allowances when available, with remaining values and reset countdowns. Pinning moves a quota first without hiding other pools. Only enabled connections appear; one Connect tile stays visible when none are enabled. It includes separate account/workspace pools, tray controls, remembered position, optional startup and threshold alerts.
+This branch includes unreleased improvements; existing 0.1.0 downloads do not include them. See the [changelog](CHANGELOG.md).
+
+A Windows desktop widget for remaining AI subscription allowances. First release: **0.1.0**; MIT licensed. A taskbar-height horizontal strip shows each account's reported quota windows as separate percentages and meters. Click a provider for reset countdowns and connection details, or focus one account in a narrower bar. It includes separate account/workspace pools, bars or rings, tray controls, remembered position, optional startup and threshold alerts.
 
 ## Widget preview
 
-**Compact bars** — separate remaining allowances and reset countdowns.
+**All accounts** — a 48 px tall strip, up to 480 px wide. Each reported quota has its own label, remaining value and meter; low allowances turn amber. Additional accounts or longer quota names scroll horizontally, keeping the menu accessible.
 
-![TokenFuel compact bar view showing a monthly balance and separate five-hour and weekly quotas](docs/images/widget-bars.png)
+![TokenFuel application showing a monthly allowance and separate five-hour and weekly quotas in the compact strip](docs/images/widget-strip.jpg)
 
-**Circular gauges** — remaining percentages centred inside each quota's gauge.
+**Provider details on click** — see every quota, reset countdown, source, reading age and reported monetary balance. Pin or unpin a quota to put it first without removing other windows. Close with the cross, click outside, or press Escape.
 
-![TokenFuel circular gauge view showing separate monthly, five-hour and weekly allowances](docs/images/widget-rings.png)
+![TokenFuel application with Gemini quota details open, separate meters, reset countdowns and a Focus this account action](docs/images/widget-details.jpg)
 
-Screenshots show the current UI with fictional sample data. The widget displays only connected accounts and quota windows reported by the selected source; these examples do not certify live support for every subscription tier.
+**Focus mode** — choose **Focus this account** in the details panel or select an account from the menu. A typical two-quota bar is 300 × 48 px. The selection is saved across restarts; a disabled or removed account falls back to the remaining enabled accounts. The account dropdown switches focus or returns to **All accounts**. An amber count on the menu indicates other accounts with fresh low allowances.
+
+![TokenFuel application in Codex focus mode with five-hour and weekly allowances and an indicator for another account running low](docs/images/widget-focus.jpg)
+
+The **… menu** contains Refresh usage, Always on top, account focus, bars/rings, Settings and Move widget. Drag the left edge of the bar or the Move widget control to reposition it. Settings manages connections, theme, opacity, Windows startup, edge snapping, polling and alerts. Stale or failed cached readings are dimmed and marked with a warning; manual snapshots have a pencil marker. Only enabled connections appear, with one Connect tile when none are enabled.
+
+These are screenshots of the running application frontend with fictional sample data, including the new unreleased UI. Existing 0.1.0 downloads retain the earlier design. The widget displays only accounts and quota windows reported by the selected source; these examples do not certify live support for every subscription tier.
 
 ## Install and run
 
 **Recommended: download the Windows installer.** No Git, GitHub CLI, Rust, Node, pnpm or Python is needed to run the prebuilt app.
 
-1. Sign in to GitHub in your browser and open [TokenFuel releases](https://github.com/tejas20/TokenFuel/releases).
+1. Open [TokenFuel releases](https://github.com/tejas20/TokenFuel/releases).
 2. Open release `v0.1.0` and download `TokenFuel_0.1.0_x64-setup.exe`.
-3. Run the installer, then open TokenFuel from the Start menu. Open Settings to connect your accounts; Windows startup is opt-in.
+3. Run the installer, then open TokenFuel from the Start menu. In 0.1.0, choose your provider, allow the connection, and Save. Windows startup is opt-in. Automatic local detection is part of the unreleased source changes shown above.
 
-Requires Windows 10/11 x64. The installer installs for the current user and includes a Microsoft WebView2 bootstrapper to install the runtime if missing (internet required). Use `TokenFuel_0.1.0_x64-offline-setup.exe` when installation must work without downloading WebView2. **The repository is private:** download access requires repository read access. The binaries are unsigned. Native ARM64 and 32-bit builds are not included.
+Requires Windows 10/11 x64. The installer installs for the current user and includes a Microsoft WebView2 bootstrapper to install the runtime if missing (internet required). Use `TokenFuel_0.1.0_x64-offline-setup.exe` when installation must work without downloading WebView2. If the repository is private, download access requires repository read access. The binaries are unsigned. Native ARM64 and 32-bit builds are not included.
 
 **Portable alternative:** download `TokenFuel_0.1.0_x64-portable.zip` from the same release, extract it, and double-click `TokenFuel.exe`. WebView2 must already be installed. Configuration and credentials still use Windows application storage.
 
@@ -41,7 +49,7 @@ From an existing checkout, the single command is `.\Start-TokenFuel.cmd`. It dow
 
 ### Connect accounts
 
-First run: Settings opens automatically. Choose your provider, allow that connection, and Save. Supported local sources automatically find an existing signed-in app or CLI after consent. Advanced workspace and secret fields are optional; token fields appear only for sources that support them. OpenAI defaults to the installed Codex session; it tracks **Codex pools**, not all ChatGPT chat models. For Gemini, choose **Gemini live Usage view · experimental**, enable the two consent controls, Save, then open the isolated window and sign in. Keep that window open; polling reloads only `/usage` every two minutes and checks the provider's freshness label. Click Refresh after signing in. The separate **Usage view · experimental capture** source is an explicit snapshot, **not automatic tracking**. Refresh the provider view before capturing; unsupported or ambiguous counters stay unavailable. Reading ages and stale labels stay visible.
+TokenFuel opens on remaining usage and automatically enables supported local sources found at launch, including experimental adapters. Disabled or removed connections stay disabled. Open Settings for connection issues or to manage accounts. Gemini requires an isolated browser sign-in; installing Gemini alone does not expose its subscription counters. Advanced workspace and secret fields are optional; token fields appear only for sources that support them. OpenAI defaults to the installed Codex session; it tracks **Codex pools**, not all ChatGPT chat models. For Gemini, choose **Gemini live Usage view · experimental**, enable the two consent controls, Save, then open the isolated window and sign in. Keep that window open; polling reloads only `/usage` every two minutes and checks the provider's freshness label. Click Refresh after signing in. The separate **Usage view · experimental capture** source is an explicit snapshot, **not automatic tracking**. Refresh the provider view before capturing; unsupported or ambiguous counters stay unavailable. Reading ages and stale labels stay visible.
 
 ## Provider support
 
@@ -78,13 +86,13 @@ pnpm test
 pnpm tauri build
 ```
 
-Installer: `target/release/bundle/nsis/`. Portable executable: `target/release/tokenfuel.exe` (requires WebView2). Build regular, offline and portable release assets with `powershell -File scripts/package-release.ps1`. Release artifacts are private. Python is optional development tooling, never an app dependency.
+Installer: `target/release/bundle/nsis/`. Portable executable: `target/release/tokenfuel.exe` (requires WebView2). Build regular, offline and portable release assets with `powershell -File scripts/package-release.ps1`. For public release preparation, see the [release guide](docs/releasing.md) and [changelog](CHANGELOG.md). Python is optional development tooling, never an app dependency.
 
 ## Local data and security
 
 Networking, parsing, credentials, scheduling and calculations live in Rust. React receives decimal strings and normalized snapshots. Local config and quota cache are stored under the Windows application configuration directory for `com.tejas20.tokenfuel`. No conversation content, telemetry or token logging is implemented.
 
-All accounts start disconnected. The connection consent control authorizes existing CLI session access. Experimental connections have a separate opt-in. Claude tokens copied from an authorized local CLI session are protected by Windows Credential Manager (`TokenFuel`, account UUID). Disconnecting stops reads and deletes TokenFuel's saved secret; changing source or removing the account also deletes it. Account-specific secrets never fall back to another local sign-in when missing. Duplicate launches show the running widget. Original provider credentials are never rewritten. Browser sessions use an incognito WebView and are not persisted across restarts. Provider windows have no local capabilities, and all native application commands additionally validate the calling widget's identity and origin.
+Detected local sources automatically reuse existing app/CLI sign-ins for quota reads. Experimental local adapters are enabled when detected and remain labelled experimental. You can disable any connection in Settings; browser sources still require manual enablement. Claude tokens copied from an authorized local CLI session are protected by Windows Credential Manager (`TokenFuel`, account UUID). Disconnecting stops reads and deletes TokenFuel's saved secret; changing source or removing the account also deletes it. Account-specific secrets never fall back to another local sign-in when missing. Duplicate launches show the running widget. Original provider credentials are never rewritten. Browser sessions use an incognito WebView and are not persisted across restarts. Provider windows have no local capabilities, and all native application commands additionally validate the calling widget's identity and origin.
 
 Polling defaults to two minutes, with separate account backoff and provider Retry-After floors. Percentages require a supplied percentage or valid denominator. Manual and browser snapshots retain their capture time; cached data and connection errors remain explicit. Monthly reset dates are provider supplied, never assumed to be the first. Notifications fire only on observed downward crossings of 20% and 10%.
 
