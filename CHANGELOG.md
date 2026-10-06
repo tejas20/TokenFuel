@@ -4,6 +4,11 @@
 
 ## 0.2.0 — 2026-10-06
 
+- Remove duplicate Refresh usage and Move widget actions from the widget menu.
+- Remove quota pinning, saved-pin ordering, pin indicators and the Remaining allowances footer label from provider details.
+- Remove ring view, its saved preference and its rendering dependency; existing configurations remain readable.
+- Order the visible controls as Menu, Refresh, then Move. Stack them vertically for multiple visible providers and keep them horizontal for one provider or a focused account.
+
 - Rebuild the published 0.2.0 downloads from the reviewed current source and show this version as GitHub's Latest release. Older releases remain hidden as drafts.
 - Use Windows native TLS certificate validation for provider connections without disabling certificate checks; Copilot and Antigravity reads succeeded on this PC.
 - Render empty-quota connection failures once in provider details.
@@ -18,7 +23,7 @@
 - Make the optional checksum-verifying launcher download public release assets without GitHub CLI or authentication.
 
 - Replace tall quota tiles with compact provider rows capped at 544 px wide, with independent meters for every quota and wrapping for larger collections.
-- Add provider detail panels, saved account focus, an account switcher, and a single menu for refresh, appearance, pinning and Settings. Keep warnings for other low accounts visible during focus.
+- Add provider detail panels, saved account focus, an account switcher, and a menu for Always on top, account focus and Settings. Keep warnings for other low accounts visible during focus.
 - Add application screenshots and a guide to the combined bar in the README.
 - Keep expanding panels inside the monitor work area and warn about stale readings even when another account is focused.
 - Open on remaining usage instead of Settings.

@@ -1,13 +1,4 @@
 import type { Limit, Snapshot } from "./types";
-export function selectLimit(
-  snapshot: Snapshot | undefined,
-  pinned: string | null,
-) {
-  return pinned
-    ? snapshot?.limits.find((q) => q.id === pinned)
-    : snapshot?.limits[0];
-}
-
 // Freshness is per quota, not the most recently updated account in the footer.
 export function isStale(
   q: Limit,

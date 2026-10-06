@@ -295,26 +295,6 @@ small {
 .low .source-line {
   color: var(--accent);
 }
-.ring-row {
-  display: flex;
-  gap: 13px;
-  align-items: center;
-  margin-top: 6px;
-}
-.ring {
-  width: 74px;
-  height: 74px;
-  flex-shrink: 0;
-}
-.ring-row strong {
-  display: block;
-  font-size: 12px;
-  font-weight: 500;
-}
-.ring-row small {
-  display: block;
-  margin-top: 5px;
-}
 footer {
   border-top: 1px solid var(--border);
   display: flex;
@@ -368,9 +348,6 @@ footer .local {
 .limit-row small {
   display: block;
   margin-top: 3px;
-}
-.limit-row button[aria-pressed="true"] {
-  color: #9fcbff;
 }
 .settings {
   max-height: 560px;

@@ -8,13 +8,10 @@ import {
   X,
   Plus,
   Trash,
-  Circle,
-  ChartBar,
   DotsThree,
   CaretDown,
   SquaresFour,
 } from "@phosphor-icons/react";
-import "react-circular-progressbar/dist/styles.css";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import { listen } from "@tauri-apps/api/event";
@@ -24,7 +21,6 @@ import {
   accountName,
   focusedAccount,
   visibleAccounts,
-  visibleLimits,
   widgetWidth,
 } from "./widget";
 import { displayStatus } from "./freshness";
@@ -125,6 +121,8 @@ export default function App() {
   const accounts = visibleAccounts(config.accounts);
   const focus = focusedAccount(accounts, config.settings.focusAccountId);
   const shownAccounts = focus ? [focus] : accounts;
+  const multipleVisibleProviders =
+    !settings && new Set(shownAccounts.map((a) => a.provider)).size > 1;
   const detailAccount = config.accounts.find(
     (a) => a.id === expanded && a.enabled,
   );
@@ -235,7 +233,7 @@ export default function App() {
   return (
     <main
       ref={dockRef}
-      className={`dock compact ${config.settings.opaque ? "opaque" : ""} view-${config.settings.view} ${focus ? "focus-mode" : ""} ${panel ? "panel-open" : ""}`}
+      className={`dock compact ${config.settings.opaque ? "opaque" : ""} ${focus ? "focus-mode" : ""} ${panel ? "panel-open" : ""}`}
       style={{ width }}
       data-theme={config.settings.theme}
       data-desktop={desktop}
@@ -302,23 +300,10 @@ export default function App() {
             />
           ))}
         </section>
-        <div className="compact-tools" aria-label="TokenFuel controls">
-          <button
-            className="move-widget"
-            aria-label="Drag widget"
-            title="Move widget · drag to reposition"
-            onPointerDown={drag}
-          >
-            <DotsSix />
-          </button>
-          <button
-            aria-label={busy ? "Refreshing usage" : "Refresh usage"}
-            title={busy ? "Refreshing…" : "Refresh usage"}
-            disabled={busy}
-            onClick={() => run("refresh")}
-          >
-            <ArrowClockwise className={busy ? "spinning" : ""} />
-          </button>
+        <div
+          className={`compact-tools ${multipleVisibleProviders ? "vertical" : ""}`}
+          aria-label="TokenFuel controls"
+        >
           <button
             ref={menuButton}
             aria-label={`Widget menu${hiddenLow ? ` · ${hiddenLow} other accounts running low` : ""}${issues.length ? " · connection issues" : ""}`}
@@ -329,7 +314,7 @@ export default function App() {
                 ? `${hiddenLow} other accounts running low`
                 : issues.length
                   ? "Menu · connection issues"
-                  : "Menu · refresh, focus and settings"
+                  : "Menu · focus and settings"
             }
             className={hiddenLow || issues.length ? "menu-warning" : undefined}
             onClick={() => {
@@ -342,6 +327,22 @@ export default function App() {
             {(hiddenLow > 0 || issues.length > 0) && (
               <span className="menu-indicator">{hiddenLow || "!"}</span>
             )}
+          </button>
+          <button
+            aria-label={busy ? "Refreshing usage" : "Refresh usage"}
+            title={busy ? "Refreshing…" : "Refresh usage"}
+            disabled={busy}
+            onClick={() => run("refresh")}
+          >
+            <ArrowClockwise className={busy ? "spinning" : ""} />
+          </button>
+          <button
+            className="move-widget"
+            aria-label="Drag widget"
+            title="Move widget · drag to reposition"
+            onPointerDown={drag}
+          >
+            <DotsSix />
           </button>
         </div>
       </div>
@@ -363,10 +364,6 @@ export default function App() {
               <X />
             </button>
           </div>
-          <button disabled={busy} onClick={() => run("refresh")}>
-            <ArrowClockwise className={busy ? "spinning" : ""} />
-            {busy ? "Refreshing…" : "Refresh usage"}
-          </button>
           <button
             aria-pressed={config.settings.alwaysOnTop}
             disabled={busy}
@@ -416,25 +413,6 @@ export default function App() {
           )}
           <div className="menu-section">Appearance & connections</div>
           <button
-            aria-label={
-              config.settings.view === "bars"
-                ? "Show ring view"
-                : "Show bar view"
-            }
-            title="Switch bars / rings"
-            disabled={busy}
-            onClick={() =>
-              preference({
-                view: config.settings.view === "bars" ? "rings" : "bars",
-              })
-            }
-          >
-            {config.settings.view === "bars" ? <Circle /> : <ChartBar />}
-            {config.settings.view === "bars"
-              ? "Show ring view"
-              : "Show bar view"}
-          </button>
-          <button
             aria-label="Settings"
             aria-expanded={settings}
             title={
@@ -454,14 +432,6 @@ export default function App() {
             {issues.length > 0 && (
               <span aria-label={issues.length + " settings issues"}>!</span>
             )}
-          </button>
-          <button
-            aria-label="Drag widget"
-            title="Drag widget"
-            onPointerDown={drag}
-          >
-            <DotsSix />
-            Move widget
           </button>
         </section>
       )}
@@ -525,7 +495,7 @@ export default function App() {
                       "No allowance reported yet. Try Refresh or check this connection in Settings."}
                   </p>
                 )}
-                {visibleLimits(s, a.pinnedLimit).map((q) => (
+                {(s?.limits ?? []).map((q) => (
                   <div className="limit-row" key={q.id}>
                     <div className="detail-quota-body">
                       <QuotaWindow
@@ -556,23 +526,6 @@ export default function App() {
                         </small>
                       )}
                     </div>
-                    <button
-                      aria-label={`Pin ${q.name}`}
-                      aria-pressed={a.pinnedLimit === q.id}
-                      disabled={busy}
-                      onClick={() =>
-                        run("save_account", {
-                          account: {
-                            ...a,
-                            pinnedLimit: a.pinnedLimit === q.id ? null : q.id,
-                          },
-                        })
-                      }
-                    >
-                      <PushPin
-                        weight={a.pinnedLimit === q.id ? "fill" : "regular"}
-                      />
-                    </button>
                   </div>
                 ))}
                 <div className="detail-actions">
@@ -587,13 +540,11 @@ export default function App() {
                       ? "Show all accounts"
                       : "Focus this account"}
                   </button>
-                  <small>
-                    {demo
-                      ? "Sample data"
-                      : a.experimental
-                        ? "Experimental connection"
-                        : "Remaining allowances"}
-                  </small>
+                  {(demo || a.experimental) && (
+                    <small>
+                      {demo ? "Sample data" : "Experimental connection"}
+                    </small>
+                  )}
                 </div>
                 {s?.retryAt && (
                   <small>

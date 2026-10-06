@@ -8,7 +8,6 @@ export const emptyAccount: Account = {
   connection: "codexCli",
   enabled: false,
   experimental: false,
-  pinnedLimit: null,
   cliPath: null,
   credentialPath: null,
   manualLimits: [],
@@ -40,18 +39,6 @@ export function accountName(a: Account): string {
     unknown: "Unknown",
   };
   return names[a.provider] ?? "Account";
-}
-
-// Pinning controls prominence, not visibility: every reported pool stays separate.
-export function visibleLimits(
-  snapshot: Snapshot | undefined,
-  pinned: string | null,
-): Limit[] {
-  const limits = snapshot?.limits ?? [];
-  const featured = limits.find((q) => q.id === pinned);
-  return featured
-    ? [featured, ...limits.filter((q) => q !== featured)]
-    : limits;
 }
 
 export function quotaLabel(q: Limit): string {

@@ -121,12 +121,6 @@ body {
   white-space: normal;
   overflow-wrap: anywhere;
 }
-.tile-quota svg {
-  width: 9px;
-  height: 9px;
-  vertical-align: middle;
-  margin-right: 2px;
-}
 .tile-meter {
   display: contents;
 }
@@ -199,15 +193,7 @@ body {
   left: 6px;
   color: var(--muted);
 }
-.pin-warning {
-  width: 12px;
-  height: 12px;
-  color: var(--warning);
-}
 .compact .unverified progress::-webkit-progress-value {
-  opacity: 0.45;
-}
-.compact .unverified .CircularProgressbar-path {
   opacity: 0.45;
 }
 .compact .unverified .tile-value {
@@ -229,6 +215,19 @@ body {
   height: 38px;
   padding: 5px;
   position: relative;
+}
+.compact-tools.vertical {
+  flex-direction: column;
+  justify-content: space-evenly;
+  width: 34px;
+  height: auto;
+  min-height: 96px;
+  align-self: stretch;
+  margin-top: 0;
+}
+.compact-tools.vertical button {
+  height: 32px;
+  flex-shrink: 0;
 }
 .compact-tools svg {
   width: 21px;
@@ -460,19 +459,6 @@ body {
   cursor: pointer;
   padding: 10px 0;
   font-size: 12px;
-}
-.compact .mini-ring {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  width: 31px;
-  height: 31px;
-}
-.compact .mini-ring svg {
-  width: 31px;
-  height: 31px;
-}
-.view-rings .quota-window .tile-quota {
-  align-self: center;
 }
 .sr-only {
   position: absolute !important;

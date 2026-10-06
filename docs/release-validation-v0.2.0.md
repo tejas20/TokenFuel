@@ -1,20 +1,28 @@
 # Validation for TokenFuel 0.2.0
 
-Date: 6 October 2026. Windows x64 release, maintained by @tejas20. The rebuilt release includes the reviewed current source: wrapping quota rows, visible Move/Refresh controls, shortened generic labels, preserved Antigravity groups, Windows native TLS and corrected connection errors. It replaces the earlier 0.2.0 prerelease at the maintainer's request and is published as Latest. Earlier packaging/native checks below are historical unless specifically identified as rebuild checks.
+Date: 6 October 2026. Windows x64 release, maintained by @tejas20. The current 0.2.0 rebuild includes the reviewed widget cleanup: Menu → Refresh → Move controls, vertical controls for multiple visible providers, horizontal controls for one provider or a focused account, simplified menus and details, and complete removal of ring view and quota pinning. Earlier packaging/native checks below are historical unless specifically identified as UX rebuild checks.
 
 ## Automated checks
 
-- `pnpm install --frozen-lockfile`: succeeded with the checked-in lockfile for the rebuild.
-- `pnpm test`: **45 tests passed** across seven frontend/DOM suites.
-- `cargo test --workspace --locked`: **41 tests passed** (19 native app tests, 22 core tests), including isolated Windows Credential Manager and SQLite tests with synthetic data.
+- `pnpm install --frozen-lockfile --offline --ignore-scripts`: succeeded with the checked-in lockfile and cached dependencies.
+- `pnpm test`: **42 tests passed** across seven frontend/DOM suites.
+- `cargo test --workspace --locked --offline`: **42 tests passed** (20 native app tests, 22 core tests), including compatibility with older configurations, isolated Windows Credential Manager and SQLite tests with synthetic data.
 - `pnpm build`: strict TypeScript and production Vite build passed.
-- `cargo clippy --workspace --all-targets --locked -- -D warnings`: passed.
+- `cargo clippy --workspace --all-targets --locked --offline -- -D warnings`: passed.
 - `cargo fmt --all --check` and `git diff --check`: passed.
 - Windows PowerShell parsed the updated public launcher without errors.
 
 ## Packaging and native checks
 
-### Rebuild checks
+### UX rebuild checks
+
+Code review covered the UI, configuration compatibility, removed rendering dependency, tests and release references. No runtime blocker was found. Fixed outdated release notes that advertised rings and quota pinning, moved the changes into the 0.2.0 changelog, and advanced the launcher cache to `2026-10-06.3` so the earlier build cannot be reused. README screenshots now show the updated frontend with fictional sample data.
+
+The full production packaging script rebuilt the regular NSIS installer, offline NSIS installer and portable ZIP. All three package hashes matched `SHA256SUMS.txt`. The executable inside the ZIP matches the newly built release executable and reports product/file version 0.2.0. The ZIP includes the project and icon licenses and third-party notices. The previous published assets were downloaded and checksum-verified in ignored local backup storage before replacement.
+
+Browser checks verified vertical controls for multiple visible providers, horizontal controls for one provider and focus mode, the simplified menu, and details without quota pins or the Remaining allowances footer. No local provider identities or credentials appear in the updated sample screenshots. Installer upgrades and clean-machine WebView2 installation were not rerun for this UI rebuild; earlier native installation checks below remain historical.
+
+### Earlier rebuild checks
 
 The complete Tauri production packaging build passed. Regular and offline NSIS installers both upgraded the existing 0.2.0 installation silently with exit code 0 and installed identical executables. All account configurations and preferences survived both upgrades and the extracted portable launch. The installed and portable executables contain identical application code; the only three differing bytes are Tauri's documented `NSS` versus `UNK` bundle marker.
 

@@ -1,13 +1,7 @@
-import { PushPin, WarningCircle, PencilSimple } from "@phosphor-icons/react";
-import { CircularProgressbar, buildStyles } from "react-circular-progressbar";
+import { WarningCircle, PencilSimple } from "@phosphor-icons/react";
 import { countdown, percent } from "./format";
 import { displayStatus } from "./freshness";
-import {
-  accountName,
-  compactQuotaLabel,
-  quotaLabel,
-  visibleLimits,
-} from "./widget";
+import { accountName, compactQuotaLabel, quotaLabel } from "./widget";
 import type { Account, Limit, Settings, Snapshot } from "./types";
 
 const states: Record<string, string> = {
@@ -36,17 +30,15 @@ export function QuotaTile({
   onClick: () => void;
   focused?: boolean;
 }) {
-  const limits = a.enabled ? visibleLimits(snapshot, a.pinnedLimit) : [];
+  const limits = a.enabled ? (snapshot?.limits ?? []) : [];
   const identity = [a.label, a.workspace].filter(Boolean).join(" · ");
-  const missingPin =
-    a.enabled && a.pinnedLimit && !limits.some((q) => q.id === a.pinnedLimit);
   return (
     <button
       className={`quota-tile provider ${a.provider} ${focused ? "focused-tile" : ""}`}
       aria-label={`${accountName(a)} · ${identity} · All remaining allowances`}
       aria-expanded={expanded}
       onClick={onClick}
-      title={`${accountName(a)} · ${identity}\nClick for connection details and quota pinning`}
+      title={`${accountName(a)} · ${identity}\nClick for connection and quota details`}
     >
       <span className={`tile-heading ${focused ? "sr-only" : ""}`}>
         <img src={`/providers/${a.provider}.svg`} alt="" />
@@ -67,12 +59,6 @@ export function QuotaTile({
           />
         ))}
       </span>
-      {missingPin && (
-        <WarningCircle
-          className="pin-warning"
-          aria-label="Pinned limit unavailable"
-        />
-      )}
     </button>
   );
 }
@@ -156,50 +142,28 @@ export function QuotaWindow({
       aria-label={`${label} · ${amount} · ${status} · ${reset}`}
       title={`${q?.product ? `${q.product} · ` : ""}${q?.name || label} · ${q?.scope || "account"}\n${amount}\n${reset}\n${status} · ${Number.isFinite(age) ? age : "?"}m ago`}
     >
-      <span className="tile-quota">
-        {q && a.pinnedLimit === q.id && (
-          <PushPin weight="fill" aria-label="Pinned quota" />
-        )}
-        {label}
-      </span>
+      <span className="tile-quota">{label}</span>
       {!detailed && state !== "available" && q && (
         <WarningCircle className="reading-warning" aria-label={status} />
       )}
       {!detailed && q?.source === "manual" && (
         <PencilSimple className="source-marker" aria-label="Manual snapshot" />
       )}
-      {!detailed && settings.view === "rings" ? (
-        <span className="mini-ring">
-          <CircularProgressbar
-            value={p ?? 0}
-            text={value}
-            strokeWidth={9}
-            styles={buildStyles({
-              pathColor: "var(--accent)",
-              trailColor: "var(--track)",
-              textColor: "var(--text)",
-              textSize: "25px",
-              pathTransitionDuration: 0.2,
-            })}
+      <span className="tile-meter">
+        {p !== null ? (
+          <progress
+            max={100}
+            value={p}
+            aria-label={`${accountName(a)} ${label} ${value} remaining`}
           />
+        ) : (
+          <span className="unknown-track" aria-hidden="true" />
+        )}
+        <span className="tile-value">
+          {value}
+          {detailed && p !== null ? <small> remaining</small> : null}
         </span>
-      ) : (
-        <span className="tile-meter">
-          {p !== null ? (
-            <progress
-              max={100}
-              value={p}
-              aria-label={`${accountName(a)} ${label} ${value} remaining`}
-            />
-          ) : (
-            <span className="unknown-track" aria-hidden="true" />
-          )}
-          <span className="tile-value">
-            {value}
-            {detailed && p !== null ? <small> remaining</small> : null}
-          </span>
-        </span>
-      )}
+      </span>
       {!q?.unlimited && balance && (
         <span className={`tile-amount ${detailed ? "" : "sr-only"}`}>
           {balance}

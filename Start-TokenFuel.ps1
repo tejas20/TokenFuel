@@ -10,7 +10,7 @@ function Get-FuelHash([string]$Path) {
 }
 $fuelVersion = 'v0.2.0'
 # A rebuilt release needs its own cache so an older 0.2.0 executable is not reused.
-$fuelRevision = '2026-10-06.2'
+$fuelRevision = '2026-10-06.3'
 $fuelRepo = 'tejas20/TokenFuel'
 $fuelZip = 'TokenFuel_0.2.0_x64-portable.zip'
 if ($env:OS -ne 'Windows_NT' -or -not [Environment]::Is64BitOperatingSystem) {

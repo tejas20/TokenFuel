@@ -1,6 +1,6 @@
 # Install TokenFuel on Windows
 
-Version 0.2.0 is the public Windows release with wrapping quota rows, visible Move/Refresh controls, account focus, automatic local detection and provider connection fixes. Experimental provider limitations still apply. See the [changelog](../CHANGELOG.md).
+Version 0.2.0 is the public Windows release with wrapping quota rows, Menu → Refresh → Move controls, simplified menus and details, account focus, automatic local detection and provider connection fixes. Controls stack vertically for multiple visible providers and stay horizontal for one provider or a focused account. Ring view and quota pinning are removed. Experimental provider limitations still apply. See the [changelog](../CHANGELOG.md).
 
 **Download the installer, run it, and review detected connections in Settings.** No coding, repository clone, Git, GitHub account, GitHub CLI, Node.js, Rust, pnpm or Python is needed. This release supports Windows 10/11 x64. Native ARM64 and 32-bit builds are not included.
 
@@ -58,7 +58,7 @@ A mismatch means the download must not be run. Matching hashes check file integr
 
 There is no automatic updater yet. Quit using the tray menu, download the newer installer and run it. Existing settings are retained. Settings shows the running app's version. Downloaded binaries do not automatically include later `main` commits.
 
-The optional `Start-TokenFuel.cmd` launcher works from a checkout without GitHub CLI or authentication. It downloads and verifies the public portable ZIP pinned to `v0.2.0`, then caches this rebuild under `%LOCALAPPDATA%\TokenFuel\Preview\v0.2.0\2026-10-06.2`. Update your checkout to use this new cache instead of an earlier 0.2.0 executable. It requires WebView2 and does not automatically update. `-DownloadOnly` downloads and verifies without starting. Normal users should choose the installer.
+The optional `Start-TokenFuel.cmd` launcher works from a checkout without GitHub CLI or authentication. It downloads and verifies the public portable ZIP pinned to `v0.2.0`, then caches this rebuild under `%LOCALAPPDATA%\TokenFuel\Preview\v0.2.0\2026-10-06.3`. Update your checkout to use this new cache instead of an earlier 0.2.0 executable. It requires WebView2 and does not automatically update. `-DownloadOnly` downloads and verifies without starting. Normal users should choose the installer.
 
 ## Troubleshooting
 

@@ -1,6 +1,6 @@
 # TokenFuel 0.2.0 — Windows
 
-The updated 0.2.0 downloads include wrapping quota rows, visible Move/Refresh controls and provider connection fixes. This release replaces the earlier 0.2.0 prerelease and is marked Latest so it appears on the repository homepage. TokenFuel remains owned and maintained by [@tejas20](https://github.com/tejas20), with MIT-licensed source and optional [GitHub Sponsors](https://github.com/sponsors/tejas20) support. Experimental provider limitations still apply.
+The updated 0.2.0 downloads include the reviewed widget cleanup, wrapping quota rows and provider connection fixes. Controls appear in Menu → Refresh → Move order, vertically for multiple visible providers and horizontally for one provider or a focused account. Ring view and quota pinning are removed. This release is marked Latest on the repository homepage. TokenFuel remains owned and maintained by [@tejas20](https://github.com/tejas20), with MIT-licensed source and optional [GitHub Sponsors](https://github.com/sponsors/tejas20) support. Experimental provider limitations still apply.
 
 ## Install
 
@@ -18,15 +18,15 @@ Quit the old widget before installing. Existing settings are retained. If you al
 - Visible Move and Refresh controls beside the menu, with busy-state feedback; generic labels use 5h, Week, Month and Day, while named model pools stay distinct.
 - Windows native TLS certificate validation fixes provider connections rejected by bundled roots; certificate checks remain enabled.
 - Copilot and Antigravity connection errors appear once, and their updated icons include license notices in the portable ZIP.
-- Provider details with reset countdowns, source/freshness information, quota pinning and a saved focus mode.
-- A menu for refresh, account focus, bars/rings, settings and moving the widget. Expanded panels stay within the monitor work area.
+- Provider details with reset countdowns, source/freshness information and a saved focus mode. Pin buttons and the Remaining allowances footer label are removed; quota windows retain their source order, including when older settings contain saved pins.
+- A menu for Always on top, account focus and Settings. Refresh and Move remain directly accessible on the widget. Ring view, its rendering dependency and its saved setting are removed. Expanded panels stay within the monitor work area.
 - Usage-first startup and detection of supported local sources, including experimental adapters. Disabled/removed sources stay disabled; Gemini still needs a separate isolated browser sign-in.
 - Preference saves preserve other recent changes and show Windows application failures in Settings. Invalid configuration is reported rather than silently reset.
 - Public download guidance, contribution/security reporting guides and a repository Sponsor button for @tejas20.
 
 ## Validation and limits
 
-45 frontend tests and 41 Rust tests passed locally, together with the production TypeScript/Vite build, Clippy and Rust formatting. See [release validation](https://github.com/tejas20/TokenFuel/blob/main/docs/release-validation-v0.2.0.md) for packaging and native checks.
+42 frontend tests and 42 Rust tests passed locally, together with the production TypeScript/Vite build, Clippy and Rust formatting. Regression checks cover layout changes, simplified menus and details, source quota order, and loading older configurations with removed preferences. See [release validation](https://github.com/tejas20/TokenFuel/blob/main/docs/release-validation-v0.2.0.md) for packaging and native checks.
 
 Codex, Copilot and Antigravity live quota reads were verified on this PC. Gemini's quota parser was checked against a signed-in PRO Usage page; native isolated sign-in and sustained polling remain unverified. Most other provider adapters have synthetic fixture coverage, with live validation still pending. Compare experimental readings against your provider's Usage page before relying on them.
 

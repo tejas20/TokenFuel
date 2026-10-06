@@ -84,7 +84,6 @@ pub struct Account {
     pub connection: Connection,
     pub enabled: bool,
     pub experimental: bool,
-    pub pinned_limit: Option<String>,
     pub cli_path: Option<String>,
     pub credential_path: Option<String>,
     #[serde(default)]
@@ -96,7 +95,6 @@ pub struct Account {
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     pub focus_account_id: Option<String>,
-    pub view: String,
     pub theme: String,
     pub opaque: bool,
     pub always_on_top: bool,
@@ -109,7 +107,6 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             focus_account_id: None,
-            view: "bars".into(),
             theme: "system".into(),
             opaque: false,
             always_on_top: true,
@@ -172,7 +169,6 @@ impl Default for Config {
             },
             enabled: false,
             experimental: false,
-            pinned_limit: None,
             cli_path: None,
             credential_path: None,
             manual_limits: vec![],
@@ -285,5 +281,43 @@ mod persistence_tests {
         assert!(config.settings.focus_account_id.is_none());
         assert!(patch_settings(&config.settings, serde_json::json!({"startup":"yes"})).is_err());
         assert!(patch_settings(&config.settings, serde_json::json!({"typo":true})).is_err());
+    }
+
+    #[test]
+    fn removed_display_preferences_do_not_break_saved_configuration() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        let mut value = serde_json::to_value(Config::default()).unwrap();
+        value["settings"]["view"] = serde_json::json!("rings");
+        value["settings"]["theme"] = serde_json::json!("light");
+        value["settings"]["focusAccountId"] = serde_json::json!("personal");
+        value["accounts"][0]["pinnedLimit"] = serde_json::json!("week");
+        value["accounts"][0]["enabled"] = serde_json::json!(true);
+        std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+
+        let config = read(&path).unwrap();
+        assert_eq!(config.settings.theme, "light");
+        assert_eq!(
+            config.settings.focus_account_id.as_deref(),
+            Some("personal")
+        );
+        assert!(
+            serde_json::to_value(&config.settings)
+                .unwrap()
+                .get("view")
+                .is_none()
+        );
+        assert!(patch_settings(&config.settings, serde_json::json!({"view": "rings"})).is_err());
+        assert!(config.accounts[0].enabled);
+        assert_eq!(
+            config.accounts.len(),
+            value["accounts"].as_array().unwrap().len()
+        );
+        assert!(
+            serde_json::to_value(&config.accounts[0])
+                .unwrap()
+                .get("pinnedLimit")
+                .is_none()
+        );
     }
 }

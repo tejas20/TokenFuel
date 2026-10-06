@@ -1,13 +1,7 @@
 import { expect, test } from "vitest";
-import { isStale, displayStatus, selectLimit } from "./freshness";
+import { isStale, displayStatus } from "./freshness";
 import type { Limit, Snapshot } from "./types";
 const now = Date.parse("2026-10-02T12:00:00Z");
-test("missing pinned quota never silently substitutes a different pool", () => {
-  const snapshot = { limits: [quota()] } as Snapshot;
-  expect(selectLimit(snapshot, "removed-pool")).toBeUndefined();
-  expect(selectLimit(snapshot, "x")?.id).toBe("x");
-  expect(selectLimit(snapshot, null)?.id).toBe("x");
-});
 const quota = (change: Partial<Limit> = {}): Limit => ({
   id: "x",
   name: "Weekly",

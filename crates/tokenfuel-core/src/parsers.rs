@@ -850,7 +850,7 @@ mod tests {
         );
     }
     #[test]
-    fn codex_pin_tracks_window_duration_when_provider_moves_weekly_to_primary() {
+    fn codex_window_identity_tracks_duration_when_provider_moves_weekly_to_primary() {
         let both = codex(
             &json!({"rateLimits":{"primary":{"usedPercent":10,"windowDurationMins":300},"secondary":{"usedPercent":20,"windowDurationMins":10080}}}),
         );
@@ -900,7 +900,7 @@ mod tests {
         assert!(claude(&json!({"spend":{"enabled":true,"used":{"amount_minor":100}}})).is_empty());
     }
     #[test]
-    fn quota_pin_identity_survives_reordering() {
+    fn quota_identity_survives_reordering() {
         let a =
             json!({"kind":"weekly","percent":25,"scope":{"model":{"id":"a","display_name":"A"}}});
         let b =

@@ -2,12 +2,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { JSDOM } from "jsdom";
 import { expect, test } from "vitest";
 import { QuotaTile } from "./QuotaTile";
-import { emptyAccount, quotaLabel, visibleLimits } from "./widget";
+import { emptyAccount, quotaLabel } from "./widget";
 import type { Account, Limit, Settings, Snapshot } from "./types";
 
 const now = Date.parse("2026-10-02T15:00:00Z");
 const settings: Settings = {
-  view: "bars",
   theme: "dark",
   opaque: false,
   alwaysOnTop: false,
@@ -46,7 +45,6 @@ const snapshot = (limits: Limit[]): Snapshot => ({
 function render(
   limits: Limit[],
   changes: Partial<Account> = {},
-  view: Settings["view"] = "bars",
   status = "available",
 ) {
   return new JSDOM(
@@ -54,7 +52,7 @@ function render(
       <QuotaTile
         account={{ ...account, ...changes }}
         snapshot={{ ...snapshot(limits), status }}
-        settings={{ ...settings, view }}
+        settings={settings}
         now={now}
         expanded={false}
         onClick={() => {}}
@@ -63,79 +61,60 @@ function render(
   ).window.document;
 }
 
-test.each(["bars", "rings"] as const)(
-  "%s shows every window including weekly and monthly without expansion",
-  (view) => {
-    const doc = render(
-      [
-        limit("current"),
-        limit("week"),
-        limit("month", {
-          name: "Enterprise budget",
-          period: "monthly",
-          unit: "USD",
-          total: "200",
-          used: "80",
-          remaining: "120",
-          remainingPercent: 60,
-        }),
-      ],
-      {},
-      view,
-    );
-    const rows = [...doc.querySelectorAll(".quota-window")];
-    expect(rows).toHaveLength(3);
-    expect(
-      rows.map((q) => q.querySelector(".tile-quota")?.textContent),
-    ).toEqual(["5h", "Week", "Month · Enterprise budget"]);
-    expect(rows.map((q) => q.getAttribute("aria-label"))).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("21% remaining"),
-        expect.stringContaining("84% remaining"),
-        expect.stringContaining("60% remaining · 120 USD left"),
-      ]),
-    );
-    expect(
-      doc.querySelectorAll(view === "bars" ? "progress" : ".mini-ring"),
-    ).toHaveLength(3);
-    expect(doc.querySelector("button")?.getAttribute("aria-expanded")).toBe(
-      "false",
-    );
-  },
-);
-
-test("pinning reorders but never removes windows, including separate feature pools", () => {
-  const limits = [
+test("shows every window including weekly and monthly without expansion", () => {
+  const doc = render([
     limit("current"),
     limit("week"),
-    limit("sonnet", { name: "Sonnet weekly" }),
-  ];
-  expect(visibleLimits(snapshot(limits), "week").map((q) => q.id)).toEqual([
-    "week",
-    "current",
-    "sonnet",
+    limit("month", {
+      name: "Enterprise budget",
+      period: "monthly",
+      unit: "USD",
+      total: "200",
+      used: "80",
+      remaining: "120",
+      remainingPercent: 60,
+    }),
   ]);
-  expect(snapshot(limits).limits.map((q) => q.id)).toEqual([
-    "current",
-    "week",
-    "sonnet",
-  ]);
-  const doc = render(limits, { pinnedLimit: "week" });
-  expect(doc.querySelectorAll(".quota-window")).toHaveLength(3);
-  expect(doc.querySelector(".quota-window .tile-quota")?.textContent).toBe(
+  const rows = [...doc.querySelectorAll(".quota-window")];
+  expect(rows).toHaveLength(3);
+  expect(rows.map((q) => q.querySelector(".tile-quota")?.textContent)).toEqual([
+    "5h",
     "Week",
+    "Month · Enterprise budget",
+  ]);
+  expect(rows.map((q) => q.getAttribute("aria-label"))).toEqual(
+    expect.arrayContaining([
+      expect.stringContaining("21% remaining"),
+      expect.stringContaining("84% remaining"),
+      expect.stringContaining("60% remaining · 120 USD left"),
+    ]),
   );
-  expect(doc.querySelectorAll('[aria-label="Pinned quota"]')).toHaveLength(1);
+  expect(doc.querySelectorAll("progress")).toHaveLength(3);
+  expect(doc.querySelector("button")?.getAttribute("aria-expanded")).toBe(
+    "false",
+  );
 });
 
-test("a missing pin stays explicit while available weekly windows remain visible", () => {
-  const doc = render([limit("week")], { pinnedLimit: "removed-monthly" });
-  expect(
-    doc.querySelector('[aria-label="Pinned limit unavailable"]'),
-  ).not.toBeNull();
-  expect(doc.body.textContent).toContain("84%");
-  expect(doc.querySelector('[aria-label="Pinned quota"]')).toBeNull();
-});
+test.each(["week", "removed-monthly"])(
+  "legacy pin %s cannot reorder or mark quota windows",
+  (pinnedLimit) => {
+    const limits = [
+      limit("current"),
+      limit("week"),
+      limit("sonnet", { name: "Sonnet weekly" }),
+    ];
+    const legacyAccount = { ...account, pinnedLimit };
+    const doc = render(limits, legacyAccount);
+    expect(doc.querySelectorAll(".quota-window")).toHaveLength(3);
+    expect(
+      [...doc.querySelectorAll(".tile-quota")].map((q) => q.textContent),
+    ).toEqual(["5h", "Week", "Sonnet weekly"]);
+    expect(doc.querySelector('[aria-label="Pinned quota"]')).toBeNull();
+    expect(
+      doc.querySelector('[aria-label="Pinned limit unavailable"]'),
+    ).toBeNull();
+  },
+);
 
 test("freshness and low treatments belong to each pool", () => {
   const doc = render([
@@ -184,7 +163,7 @@ test("monthly zero, unknown denominator and unlimited are not invented percentag
 
 test("expired login keeps all cached windows and disconnected accounts do not expose readings", () => {
   const limits = [limit("current"), limit("week")];
-  const expired = render(limits, {}, "bars", "loginRequired");
+  const expired = render(limits, {}, "loginRequired");
   expect(expired.querySelectorAll(".unverified")).toHaveLength(2);
   expect(
     [...expired.querySelectorAll(".tile-caption")].every(
@@ -197,31 +176,22 @@ test("expired login keeps all cached windows and disconnected accounts do not ex
   expect(disconnected.body.textContent).not.toContain("84%");
 });
 
-test.each(["bars", "rings"] as const)(
-  "%s spending without a denominator keeps its limit unknown",
-  (view) => {
-    const doc = render(
-      [
-        limit("spend", {
-          name: "On-demand spend",
-          period: "monthly",
-          unit: "USD",
-          used: "42.50",
-          total: null,
-          remaining: null,
-          remainingPercent: null,
-        }),
-      ],
-      {},
-      view,
-    );
-    expect(doc.body.textContent).toContain(
-      "42.50 USD used (limit not reported)",
-    );
-    expect(
-      doc.querySelector(".quota-window")?.getAttribute("aria-label"),
-    ).toContain("42.50 USD used (limit not reported)");
-    expect(doc.body.textContent).not.toContain("uncapped");
-    expect(doc.body.textContent).not.toContain("No reading");
-  },
-);
+test("spending without a denominator keeps its limit unknown", () => {
+  const doc = render([
+    limit("spend", {
+      name: "On-demand spend",
+      period: "monthly",
+      unit: "USD",
+      used: "42.50",
+      total: null,
+      remaining: null,
+      remainingPercent: null,
+    }),
+  ]);
+  expect(doc.body.textContent).toContain("42.50 USD used (limit not reported)");
+  expect(
+    doc.querySelector(".quota-window")?.getAttribute("aria-label"),
+  ).toContain("42.50 USD used (limit not reported)");
+  expect(doc.body.textContent).not.toContain("uncapped");
+  expect(doc.body.textContent).not.toContain("No reading");
+});

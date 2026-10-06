@@ -2,27 +2,27 @@
 
 [![Sponsor @tejas20](https://img.shields.io/badge/Sponsor-%40tejas20-ea4aaa?logo=githubsponsors)](https://github.com/sponsors/tejas20)
 
-**0.2.0 Windows release:** the wrapping quota rows, visible Move/Refresh controls, account focus and provider connection fixes are included in these downloads. See the [changelog](CHANGELOG.md).
+**0.2.0 Windows release:** these downloads include the reviewed widget cleanup: Menu → Refresh → Move controls, vertical controls for multiple providers, horizontal controls for one provider or a focused account, simplified menus and details, and removal of ring view and quota pinning. See the [changelog](CHANGELOG.md).
 
-A Windows desktop widget for remaining AI subscription allowances. Maintained by [@tejas20](https://github.com/tejas20); MIT licensed. A compact widget shows each account's reported quota windows as separate percentages and meters. Click a provider for reset countdowns and connection details, or focus one account in a narrower bar. It includes separate account/workspace pools, bars or rings, tray controls, remembered position, optional startup and threshold alerts.
+A Windows desktop widget for remaining AI subscription allowances. Maintained by [@tejas20](https://github.com/tejas20); MIT licensed. A compact widget shows each account's reported quota windows as separate percentages and bars. Click a provider for reset countdowns and connection details, or focus one account in a narrower bar. It includes separate account/workspace pools, tray controls, remembered position, optional startup and threshold alerts.
 
 ## Widget preview
 
 **All accounts** — up to 544 px wide, with 48 px provider rows and visible Move, Refresh and Menu controls. Each reported quota has its own label, remaining value and meter; low allowances turn amber. Additional accounts and longer quota names wrap onto visible rows. Generic windows use 5h, Week, Month and Day; named model pools stay separate.
 
-![TokenFuel application showing a monthly allowance and separate five-hour and weekly quotas in the compact strip](docs/images/widget-strip.jpg)
+![TokenFuel showing Codex, Copilot and Antigravity allowances with vertical Menu, Refresh and Move controls](docs/images/widget-strip.jpg)
 
-**Provider details on click** — see every quota, reset countdown, source, reading age and reported monetary balance. Pin or unpin a quota to put it first without removing other windows. Close with the cross, click outside, or press Escape.
+**Provider details on click** — see every quota, reset countdown, source, reading age and reported monetary balance. Choose **Focus this account** to focus its allowances. Close with the cross, click outside, or press Escape.
 
-![TokenFuel application with Gemini quota details open, separate meters, reset countdowns and a Focus this account action](docs/images/widget-details.jpg)
+![TokenFuel with Codex quota details open, separate meters, reset countdowns and a Focus this account action](docs/images/widget-details.jpg)
 
 **Focus mode** — choose **Focus this account** in the details panel or select an account from the menu. The bar starts at 300 px wide and wraps quotas when needed to keep the account selector and controls visible. The selection is saved across restarts; a disabled or removed account falls back to the remaining enabled accounts. The account dropdown switches focus or returns to **All accounts**. An amber count on the menu indicates other accounts with fresh low allowances.
 
-![TokenFuel application in Codex focus mode with five-hour and weekly allowances and an indicator for another account running low](docs/images/widget-focus.jpg)
+![TokenFuel in Codex focus mode with five-hour and weekly allowances and horizontal Menu, Refresh and Move controls](docs/images/widget-focus.jpg)
 
-Move and Refresh icons sit beside the **… menu** for direct access. The menu also contains Refresh usage, Always on top, account focus, bars/rings, Settings and Move widget. Drag the left edge of the bar or the Move widget control to reposition it. Settings manages connections, theme, opacity, Windows startup, edge snapping, polling and alerts. Stale or failed cached readings are dimmed and marked with a warning; manual snapshots have a pencil marker. Only enabled connections appear, with one Connect tile when none are enabled.
+The visible controls are ordered **… menu**, **Refresh**, then **Move**. They stack vertically when multiple providers are visible and stay horizontal for one provider or a focused account. The menu contains Always on top, account focus and Settings. Drag the left edge of the bar or the Move widget control to reposition it. Settings manages connections, theme, opacity, Windows startup, edge snapping, polling and alerts. Stale or failed cached readings are dimmed and marked with a warning; manual snapshots have a pencil marker. Only enabled connections appear, with one Connect tile when none are enabled. Quota windows keep the order reported by their source; saved quota pins are ignored.
 
-These are screenshots of the earlier 0.2.0 frontend with fictional sample data. The updated release adds wrapping rows and visible Move/Refresh controls. The widget displays only accounts and quota windows reported by the selected source; these examples do not certify live support for every subscription tier.
+These screenshots show the updated 0.2.0 frontend with fictional sample data. The widget displays only accounts and quota windows reported by the selected source; these examples do not certify live support for every subscription tier.
 
 ## Install and run
 
@@ -47,7 +47,7 @@ git clone https://github.com/tejas20/TokenFuel.git
 if ($LASTEXITCODE -eq 0) { .\TokenFuel\Start-TokenFuel.cmd }
 ```
 
-From an existing checkout, the single command is `.\Start-TokenFuel.cmd`. It downloads the prebuilt app, verifies the ZIP against the release's SHA-256 checksum and caches it under `%LOCALAPPDATA%\TokenFuel\Preview\v0.2.0\2026-10-06.2`. This rebuild uses a new cache directory so an earlier 0.2.0 executable is not reused. Subsequent launches verify the cached executable against its local checksum. It needs no developer toolchain, but WebView2 must already be installed. The launcher is pinned to this release; it does not automatically update. Checksums check file integrity; they do not replace publisher code signing. When upgrading an older checkout, quit TokenFuel from its tray menu, run `git pull --ff-only`, then run the launcher again.
+From an existing checkout, the single command is `.\Start-TokenFuel.cmd`. It downloads the prebuilt app, verifies the ZIP against the release's SHA-256 checksum and caches it under `%LOCALAPPDATA%\TokenFuel\Preview\v0.2.0\2026-10-06.3`. This rebuild uses a new cache directory so an earlier 0.2.0 executable is not reused. Subsequent launches verify the cached executable against its local checksum. It needs no developer toolchain, but WebView2 must already be installed. The launcher is pinned to this release; it does not automatically update. Checksums check file integrity; they do not replace publisher code signing. When upgrading an older checkout, quit TokenFuel from its tray menu, run `git pull --ff-only`, then run the launcher again.
 
 ### Connect accounts
 

@@ -22,7 +22,6 @@ export const initial: Config = {
   position: null,
   settings: {
     focusAccountId: null,
-    view: demo && query.get("view") === "rings" ? "rings" : "bars",
     theme: "dark",
     opaque: false,
     alwaysOnTop: true,
@@ -54,7 +53,6 @@ export const initial: Config = {
                     : "browser",
     enabled: demo && demoProviders.includes(provider),
     experimental: false,
-    pinnedLimit: null,
     cliPath: null,
     credentialPath: null,
     manualLimits: [],

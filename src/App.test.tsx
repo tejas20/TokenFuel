@@ -11,7 +11,7 @@ vi.mock("./bridge", () => ({
   initial: {
     accounts: [],
     cached: {},
-    settings: { view: "bars", theme: "dark", intervalSecs: 120 },
+    settings: { theme: "dark", intervalSecs: 120 },
   },
   command: vi.fn(),
 }));
@@ -28,7 +28,6 @@ test.each(["copilot", "antigravity"] as const)(
       schemaVersion: 2,
       position: null,
       settings: {
-        view: "bars",
         theme: "dark",
         intervalSecs: 120,
         opaque: false,
@@ -76,7 +75,7 @@ test.each(["copilot", "antigravity"] as const)(
     }
   },
 );
-test("provider details, pinning, saved focus, switching and disabling a focused account", async () => {
+test("provider details, simplified menu, saved focus, switching and disabling a focused account", async () => {
   const q = (id: string, remainingPercent: number): Limit => ({
     id,
     name: id === "session" ? "5 hours" : "Weekly",
@@ -97,7 +96,6 @@ test("provider details, pinning, saved focus, switching and disabling a focused 
     schemaVersion: 1,
     position: null,
     settings: {
-      view: "bars",
       theme: "dark",
       opaque: false,
       alwaysOnTop: true,
@@ -107,8 +105,19 @@ test("provider details, pinning, saved focus, switching and disabling a focused 
       snapToEdges: true,
     },
     accounts: [
-      { ...emptyAccount, id: "work", label: "Work", enabled: true },
-      { ...emptyAccount, id: "personal", label: "Personal", enabled: true },
+      {
+        ...emptyAccount,
+        id: "work",
+        label: "Work",
+        enabled: true,
+      },
+      {
+        ...emptyAccount,
+        id: "personal",
+        provider: "copilot",
+        label: "Personal",
+        enabled: true,
+      },
     ],
     cached: {},
   };
@@ -161,19 +170,29 @@ test("provider details, pinning, saved focus, switching and disabling a focused 
   try {
     await act(async () => root.render(<App />));
     expect(container.querySelectorAll(".accounts progress")).toHaveLength(4);
+    expect(container.querySelector(".compact-tools.vertical")).not.toBeNull();
+    expect(
+      [...container.querySelectorAll(".compact-tools button")].map((b) =>
+        b.getAttribute("aria-label"),
+      ),
+    ).toEqual(["Widget menu", "Refresh usage", "Drag widget"]);
     await click('.quota-tile[aria-label*="Work"]');
     expect(container.querySelectorAll(".details progress")).toHaveLength(2);
     expect(container.querySelector(".details")?.textContent).toContain("Reset");
-    await click('[aria-label="Pin Weekly"]');
-    expect(container.querySelector(".accounts .tile-quota")?.textContent).toBe(
-      "Week",
-    );
+    expect(container.querySelector('.details [aria-label^="Pin"]')).toBeNull();
+    expect(
+      container.querySelector('.details [aria-label="Pinned quota"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector(".detail-actions")?.textContent,
+    ).not.toContain("Remaining allowances");
     expect(container.querySelectorAll(".accounts progress")).toHaveLength(4);
     await click(".detail-actions .primary");
     expect(command).toHaveBeenCalledWith("save_settings", {
       settings: { focusAccountId: "work" },
     });
     expect(container.querySelectorAll(".quota-tile")).toHaveLength(1);
+    expect(container.querySelector(".compact-tools.vertical")).toBeNull();
     expect(
       container.querySelector('[aria-label*="other accounts running low"]'),
     ).not.toBeNull();
@@ -183,6 +202,11 @@ test("provider details, pinning, saved focus, switching and disabling a focused 
       "Codex",
     );
     await click(".focus-selector");
+    const menu = container.querySelector(".widget-menu")!;
+    expect(menu.textContent).not.toMatch(
+      /Refresh usage|Move widget|Show ring view|Show bar view/,
+    );
+    expect(menu.querySelector('[aria-label="Drag widget"]')).toBeNull();
     await click('.focus-option[aria-pressed="false"]');
     expect(config.settings.focusAccountId).toBe("personal");
     await click(".compact-tools button[aria-controls]");
@@ -192,6 +216,7 @@ test("provider details, pinning, saved focus, switching and disabling a focused 
     await act(async () => allAccounts.click());
     expect(config.settings.focusAccountId).toBeNull();
     expect(container.querySelectorAll(".quota-tile")).toHaveLength(2);
+    expect(container.querySelector(".compact-tools.vertical")).not.toBeNull();
     await click('.quota-tile[aria-label*="Work"]');
     await act(async () =>
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })),
@@ -208,9 +233,10 @@ test("provider details, pinning, saved focus, switching and disabling a focused 
       })),
     };
     await click(".compact-tools button[aria-controls]");
-    await click(".widget-menu > button:first-of-type"); // refresh reads the updated config
+    await click('.compact-tools [aria-label="Refresh usage"]');
     expect(container.querySelector(".focus-selector")).toBeNull();
     expect(container.querySelectorAll(".quota-tile")).toHaveLength(1);
+    expect(container.querySelector(".compact-tools.vertical")).toBeNull();
     expect(container.querySelector(".details")).toBeNull();
   } finally {
     await act(async () => root.unmount());
@@ -225,7 +251,6 @@ test("focus mode warns when a hidden account's reading ages without a new poll",
     schemaVersion: 1,
     position: null,
     settings: {
-      view: "bars",
       theme: "dark",
       intervalSecs: 120,
       focusAccountId: "work",

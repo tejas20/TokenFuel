@@ -12,12 +12,12 @@ vi.mock("./bridge", () => ({
   initial: {
     accounts: [],
     cached: {},
-    settings: { view: "bars", theme: "dark", intervalSecs: 120 },
+    settings: { theme: "dark", intervalSecs: 120 },
   },
   command: vi.fn(async () => ({
     accounts: [],
     cached: {},
-    settings: { view: "bars", theme: "dark", intervalSecs: 120 },
+    settings: { theme: "dark", intervalSecs: 120 },
   })),
 }));
 import App, { AccountEditor } from "./App";
@@ -124,7 +124,7 @@ test("connection and Windows issues are highlighted in Settings without opening 
         limits: [],
       },
     },
-    settings: { view: "bars", theme: "dark", intervalSecs: 120 },
+    settings: { theme: "dark", intervalSecs: 120 },
     settingsIssues: ["Windows could not apply startup."],
   });
   const container = document.createElement("div");

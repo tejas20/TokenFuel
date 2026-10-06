@@ -59,7 +59,6 @@ export interface Account {
     | "unknown";
   enabled: boolean;
   experimental: boolean;
-  pinnedLimit: string | null;
   cliPath: string | null;
   credentialPath: string | null;
   manualLimits: Limit[];
@@ -67,7 +66,6 @@ export interface Account {
 }
 export interface Settings {
   focusAccountId?: string | null;
-  view: "bars" | "rings";
   theme: "system" | "dark" | "light";
   opaque: boolean;
   alwaysOnTop: boolean;

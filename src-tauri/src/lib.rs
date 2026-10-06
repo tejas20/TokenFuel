@@ -76,9 +76,7 @@ fn save_settings(
     local_ui(&window)?;
     let mut c = state.config.lock().unwrap();
     let mut settings = config::patch_settings(&c.settings, settings)?;
-    if !["bars", "rings"].contains(&settings.view.as_str())
-        || !["system", "light", "dark"].contains(&settings.theme.as_str())
-    {
+    if !["system", "light", "dark"].contains(&settings.theme.as_str()) {
         return Err("Invalid appearance setting.".into());
     }
     settings.interval_secs = settings.interval_secs.clamp(30, 3600);
