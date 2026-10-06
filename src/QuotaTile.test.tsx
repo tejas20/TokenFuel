@@ -87,7 +87,7 @@ test.each(["bars", "rings"] as const)(
     expect(rows).toHaveLength(3);
     expect(
       rows.map((q) => q.querySelector(".tile-quota")?.textContent),
-    ).toEqual(["5h", "Week", "Monthly · Enterprise budget"]);
+    ).toEqual(["5h", "Week", "Month · Enterprise budget"]);
     expect(rows.map((q) => q.getAttribute("aria-label"))).toEqual(
       expect.arrayContaining([
         expect.stringContaining("21% remaining"),
@@ -179,7 +179,7 @@ test("monthly zero, unknown denominator and unlimited are not invented percentag
   expect(doc.body.textContent).not.toContain("0%");
   expect(
     quotaLabel(limit("m", { name: "Monthly budget", period: "monthly" })),
-  ).toBe("Monthly budget");
+  ).toBe("Month");
 });
 
 test("expired login keeps all cached windows and disconnected accounts do not expose readings", () => {

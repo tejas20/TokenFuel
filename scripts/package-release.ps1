@@ -24,6 +24,7 @@ try {
     New-Item -ItemType Directory -Force -Path $fuelStage | Out-Null
     Copy-Item -LiteralPath (Join-Path $fuelRoot 'target/release/tokenfuel.exe') -Destination (Join-Path $fuelStage 'TokenFuel.exe') -Force
     Copy-Item -LiteralPath LICENSE,THIRD_PARTY_NOTICES.md -Destination $fuelStage -Force
+    Copy-Item -LiteralPath public/providers/LICENSE-octicons,public/providers/LICENSE-lobe-icons,docs/design/LICENSE-phosphor -Destination $fuelStage -Force
     Copy-Item -LiteralPath docs/portable-readme.txt -Destination (Join-Path $fuelStage 'README.txt') -Force
     $fuelZip = Join-Path $fuelOut "TokenFuel_${fuelVersion}_x64-portable.zip"
     Compress-Archive -Path (Join-Path $fuelStage '*') -DestinationPath $fuelZip -Force

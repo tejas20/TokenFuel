@@ -694,6 +694,8 @@ pub fn antigravity(value: &Value) -> Vec<UsageLimit> {
                         "weekly"
                     } else if window.eq_ignore_ascii_case("monthly") {
                         "monthly"
+                    } else if window.eq_ignore_ascii_case("daily") {
+                        "daily"
                     } else {
                         "rolling"
                     };
@@ -740,6 +742,9 @@ pub fn antigravity(value: &Value) -> Vec<UsageLimit> {
                         )
                     {
                         q.remaining_percent = Some((rf.clamp(0.0, 1.0) * 100.0).clamp(0.0, 100.0));
+                        if group_display != "Antigravity" {
+                            q.scope = group_display.to_string();
+                        }
                         q.resets_at =
                             timestamp(bucket.get("resetTime").or_else(|| bucket.get("reset_time")));
                         out.push(q);
@@ -1019,6 +1024,30 @@ mod tests {
     }
 
     #[test]
+    fn copilot_free_plan_keeps_exhausted_chat_and_completions_separate() {
+        let value = serde_json::json!({
+            "copilot_plan": "free",
+            "limited_user_quotas": { "chat": 0, "completions": 1500 },
+            "monthly_quotas": { "chat": 50, "completions": 2000 },
+            "limited_user_reset_date": "2026-11-01T00:00:00Z"
+        });
+        let quotas = copilot(&value);
+        assert_eq!(quotas.len(), 2);
+        let chat = quotas.iter().find(|q| q.id == "copilot:chat").unwrap();
+        assert_eq!(chat.remaining_percent, Some(0.0));
+        assert_eq!(chat.used.as_deref(), Some("50"));
+        assert!(!chat.unlimited);
+        assert!(chat.resets_at.is_some());
+        let completions = quotas
+            .iter()
+            .find(|q| q.id == "copilot:completions")
+            .unwrap();
+        assert_eq!(completions.remaining_percent, Some(75.0));
+        assert_eq!(completions.used.as_deref(), Some("500"));
+        assert!(!completions.unlimited);
+    }
+
+    #[test]
     fn copilot_parses_premium_unlimited_and_completions() {
         let text = include_str!("../tests/fixtures/copilot.json");
         let v: Value = serde_json::from_str(text).unwrap();
@@ -1070,6 +1099,7 @@ mod tests {
         let session = q.iter().find(|x| x.id == "antigravity:gemini-5h").unwrap();
         assert_eq!(session.name, "Session 5h");
         assert_eq!(session.period, "rolling");
+        assert_eq!(session.scope, "Gemini Models");
         assert_eq!(session.remaining_percent, Some(85.0));
         assert_eq!(
             session.resets_at.unwrap().to_rfc3339(),

@@ -304,6 +304,22 @@ export default function App() {
         </section>
         <div className="compact-tools" aria-label="TokenFuel controls">
           <button
+            className="move-widget"
+            aria-label="Drag widget"
+            title="Move widget · drag to reposition"
+            onPointerDown={drag}
+          >
+            <DotsSix />
+          </button>
+          <button
+            aria-label={busy ? "Refreshing usage" : "Refresh usage"}
+            title={busy ? "Refreshing…" : "Refresh usage"}
+            disabled={busy}
+            onClick={() => run("refresh")}
+          >
+            <ArrowClockwise className={busy ? "spinning" : ""} />
+          </button>
+          <button
             ref={menuButton}
             aria-label={`Widget menu${hiddenLow ? ` · ${hiddenLow} other accounts running low` : ""}${issues.length ? " · connection issues" : ""}`}
             aria-expanded={menu}
@@ -501,7 +517,9 @@ export default function App() {
                       "Connect this account in settings to read its allowance."}
                   </p>
                 )}
-                {(!s || !s.limits.length) && (
+                {(!s ||
+                  (!s.limits.length &&
+                    (!s.message || s.status === "available"))) && (
                   <p>
                     {s?.message ||
                       "No allowance reported yet. Try Refresh or check this connection in Settings."}

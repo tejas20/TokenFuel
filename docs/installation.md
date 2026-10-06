@@ -1,6 +1,6 @@
 # Install TokenFuel on Windows
 
-Version 0.2.0 is a public prerelease with the compact quota strip, account focus, automatic local detection and preference fixes described below. See the [changelog](../CHANGELOG.md).
+Version 0.2.0 is the public Windows release with wrapping quota rows, visible Move/Refresh controls, account focus, automatic local detection and provider connection fixes. Experimental provider limitations still apply. See the [changelog](../CHANGELOG.md).
 
 **Download the installer, run it, and review detected connections in Settings.** No coding, repository clone, Git, GitHub account, GitHub CLI, Node.js, Rust, pnpm or Python is needed. This release supports Windows 10/11 x64. Native ARM64 and 32-bit builds are not included.
 
@@ -12,7 +12,7 @@ Version 0.2.0 is a public prerelease with the compact quota strip, account focus
 
 The installer includes Microsoft's small WebView2 bootstrapper. It checks for the runtime and installs it if missing; that step needs internet. WebView2 Evergreen receives Microsoft's runtime updates. Existing WebView2 is reused. [Tauri installer options](https://v2.tauri.app/distribute/windows-installer/), [Microsoft runtime distribution](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution).
 
-Use the published 0.2.0 prerelease for the current UI. Older 0.1.0 downloads retain the earlier setup and widget. Draft releases are maintainer-only previews.
+Use the published 0.2.0 release for the current UI. Older releases are hidden as maintainer-only drafts.
 
 ## Offline or managed machines
 
@@ -29,9 +29,9 @@ At launch, TokenFuel checks known local app/CLI locations and supported credenti
 | OpenAI | Existing signed-in Codex app or CLI | Codex pools; ordinary ChatGPT model counters unavailable |
 | Claude | Existing signed-in Claude Code CLI | Experimental; enterprise monthly verification pending |
 | Cursor | Existing signed-in Cursor app | Experimental; live verification pending |
-| GitHub Copilot | Existing Copilot CLI or GitHub CLI sign-in | Live verification pending |
+| GitHub Copilot | Existing Copilot CLI or GitHub CLI sign-in | Live read verified on this PC; wider plan validation pending |
 | Grok | Existing Grok CLI sign-in | Experimental Build credits; ordinary chat counters unavailable |
-| Google Antigravity | Existing local sign-in | Experimental; live verification pending |
+| Google Antigravity | Existing local sign-in | Experimental; live read verified on this PC |
 | OpenCode Go | Existing monitor configuration if present | Experimental; otherwise needs workspace ID/session cookie in Advanced settings |
 | Gemini | Save permissions, open isolated Usage window and sign in | Experimental; keep window open, native polling verification pending |
 
@@ -58,11 +58,11 @@ A mismatch means the download must not be run. Matching hashes check file integr
 
 There is no automatic updater yet. Quit using the tray menu, download the newer installer and run it. Existing settings are retained. Settings shows the running app's version. Downloaded binaries do not automatically include later `main` commits.
 
-The optional `Start-TokenFuel.cmd` launcher works from a checkout without GitHub CLI or authentication. It downloads and verifies the public portable ZIP pinned to `v0.2.0`, then caches it under `%LOCALAPPDATA%\TokenFuel\Preview\v0.2.0`. It requires WebView2 and does not automatically update. `-DownloadOnly` downloads and verifies without starting. Normal users should choose the installer.
+The optional `Start-TokenFuel.cmd` launcher works from a checkout without GitHub CLI or authentication. It downloads and verifies the public portable ZIP pinned to `v0.2.0`, then caches this rebuild under `%LOCALAPPDATA%\TokenFuel\Preview\v0.2.0\2026-10-06.2`. Update your checkout to use this new cache instead of an earlier 0.2.0 executable. It requires WebView2 and does not automatically update. `-DownloadOnly` downloads and verifies without starting. Normal users should choose the installer.
 
 ## Troubleshooting
 
-- **Release missing / 404:** use the published `v0.2.0` prerelease link above; older draft previews are not public downloads.
+- **Release missing / 404:** use the published `v0.2.0` release link above; older drafts are not public downloads.
 - **Runtime missing / blocked download:** try the offline installer or ask your IT administrator.
 - **Usage unavailable:** follow the source's setup hint, sign in to the provider's app/CLI, authorize the source and Refresh. The app does not expose quota counters a provider does not supply.
 - **App appears hidden:** run it again or use the tray menu.

@@ -136,7 +136,9 @@ test("connection and Windows issues are highlighted in Settings without opening 
   ).not.toBeNull();
   await act(async () =>
     (
-      container.querySelector(".compact-tools button") as HTMLButtonElement
+      container.querySelector(
+        ".compact-tools button[aria-controls]",
+      ) as HTMLButtonElement
     ).click(),
   );
   expect(
@@ -162,7 +164,9 @@ test("preference controls send only the changed field", async () => {
   await act(async () => root.render(<App />));
   await act(async () =>
     (
-      container.querySelector(".compact-tools button") as HTMLButtonElement
+      container.querySelector(
+        ".compact-tools button[aria-controls]",
+      ) as HTMLButtonElement
     ).click(),
   );
   await act(async () =>

@@ -55,15 +55,17 @@ export function visibleLimits(
 }
 
 export function quotaLabel(q: Limit): string {
+  const name = shortQuotaName(q.name);
   const period = (
-    { weekly: "Weekly", monthly: "Monthly", daily: "Daily" } as Record<
-      string,
-      string
-    >
+    { weekly: "Week", monthly: "Month", daily: "Day" } as Record<string, string>
   )[q.period];
-  return period && !q.name.toLowerCase().includes(period.toLowerCase())
-    ? `${period} · ${q.name}`
-    : q.name;
+  const label =
+    period && !new RegExp(`\\b${period}(?:ly)?\\b`, "i").test(name)
+      ? `${period} · ${name}`
+      : name;
+  return q.product === "Antigravity" && q.scope !== "account"
+    ? `${q.scope.replace(/\s+models$/i, "")} · ${label}`
+    : label;
 }
 
 export function widgetWidth(
@@ -73,26 +75,43 @@ export function widgetWidth(
 ): number {
   const content = accounts.reduce((width, a) => {
     const limits = a.enabled ? (cached[a.id]?.limits ?? []) : [];
-    return width + 36 + Math.max(1, limits.length) * 70;
-  }, 40);
-  return Math.min(480, Math.max(focus ? 300 : 180, content + (focus ? 80 : 0)));
+    return width + (focus ? 0 : 36) + Math.max(1, limits.length) * 70;
+  }, 104);
+  return Math.min(544, Math.max(focus ? 300 : 180, content + (focus ? 80 : 0)));
 }
 
 export function focusedAccount(accounts: Account[], id?: string | null) {
   return accounts.find((a) => a.enabled && a.id === id);
 }
 
-// Only shorten unambiguous generic windows. Named model and workspace pools
-// retain their names even when several pools have the same period.
+// Strip provider boilerplate only from generic windows. Preserve named pools.
+function shortQuotaName(name: string): string {
+  const normalized = name
+    .trim()
+    .toLowerCase()
+    .replace(/[-_]/g, " ")
+    .replace(/\s+/g, " ");
+  const generic = normalized.replace(
+    /\s+(?:limit|quota|budget|allowance)(?:\s+remaining)?$/,
+    "",
+  );
+  if (/^(?:session\s+)?(?:five\s+hours?|5\s*hours?|5h)$/.test(generic))
+    return "5h";
+  if (/^week(?:ly)?$/.test(generic)) return "Week";
+  if (/^month(?:ly)?$/.test(generic)) return "Month";
+  if (["day", "daily"].includes(generic)) return "Day";
+  return name.trim();
+}
+
 export function compactQuotaLabel(q: Limit): string {
-  const generic: Record<string, string> = {
-    "5 hours": "5h",
-    "5-hour": "5h",
-    "5h": "5h",
-    weekly: "Week",
-    monthly: "Month",
-    "monthly budget": "Monthly",
-    daily: "Day",
-  };
-  return generic[q.name.toLowerCase()] ?? quotaLabel(q);
+  if (q.product === "Copilot") {
+    const features: Record<string, string> = {
+      chat: "Chat",
+      "code completions": "Code",
+      "premium requests": "Premium",
+    };
+    const feature = features[q.name.trim().toLowerCase()];
+    if (feature) return feature;
+  }
+  return quotaLabel(q);
 }

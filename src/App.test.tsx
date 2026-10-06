@@ -19,6 +19,63 @@ import App from "./App";
 import { command } from "./bridge";
 
 afterEach(() => vi.resetAllMocks());
+test.each(["copilot", "antigravity"] as const)(
+  "%s details show a failed connection only once",
+  async (provider) => {
+    const message = "Provider connection failed.";
+    const account = { ...emptyAccount, id: provider, provider, enabled: true };
+    const config: Config = {
+      schemaVersion: 2,
+      position: null,
+      settings: {
+        view: "bars",
+        theme: "dark",
+        intervalSecs: 120,
+        opaque: false,
+        alwaysOnTop: true,
+        startup: false,
+        alerts: false,
+        snapToEdges: true,
+      },
+      accounts: [account],
+      cached: {
+        [provider]: {
+          accountId: provider,
+          provider,
+          status: "offline",
+          message,
+          limits: [],
+          fetchedAt: new Date().toISOString(),
+          retryAt: null,
+        },
+      },
+    };
+    vi.mocked(command).mockResolvedValue(config);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+    try {
+      await act(async () => root.render(<App />));
+      await act(async () =>
+        container.querySelector<HTMLButtonElement>(".quota-tile")!.click(),
+      );
+      const details = container.querySelector(".details")!;
+      expect(details.textContent!.split(message)).toHaveLength(2);
+      expect(details.querySelector('[role="status"]')?.textContent).toBe(
+        message,
+      );
+      expect(details.querySelector("img")?.getAttribute("src")).toBe(
+        `/providers/${provider}.svg`,
+      );
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  },
+);
 test("provider details, pinning, saved focus, switching and disabling a focused account", async () => {
   const q = (id: string, remainingPercent: number): Limit => ({
     id,
@@ -128,7 +185,7 @@ test("provider details, pinning, saved focus, switching and disabling a focused 
     await click(".focus-selector");
     await click('.focus-option[aria-pressed="false"]');
     expect(config.settings.focusAccountId).toBe("personal");
-    await click(".compact-tools button");
+    await click(".compact-tools button[aria-controls]");
     const allAccounts = [
       ...container.querySelectorAll<HTMLButtonElement>(".widget-menu > button"),
     ].find((b) => b.textContent === "All accounts")!;
@@ -150,7 +207,7 @@ test("provider details, pinning, saved focus, switching and disabling a focused 
         enabled: a.id !== "work",
       })),
     };
-    await click(".compact-tools button");
+    await click(".compact-tools button[aria-controls]");
     await click(".widget-menu > button:first-of-type"); // refresh reads the updated config
     expect(container.querySelector(".focus-selector")).toBeNull();
     expect(container.querySelectorAll(".quota-tile")).toHaveLength(1);
@@ -228,7 +285,9 @@ test("focus mode warns when a hidden account's reading ages without a new poll",
     ).not.toBeNull();
     await act(async () =>
       container
-        .querySelector<HTMLButtonElement>(".compact-tools button")!
+        .querySelector<HTMLButtonElement>(
+          ".compact-tools button[aria-controls]",
+        )!
         .click(),
     );
     await act(async () =>

@@ -21,6 +21,9 @@ impl Failure {
 }
 
 pub fn create_client() -> Result<Client, Failure> {
+    // Use platform certificate validation (Schannel on Windows), including
+    // locally trusted roots and intermediate discovery. Bundled webpki roots
+    // rejected otherwise reachable provider connections with UnknownIssuer.
     Client::builder()
         .timeout(Duration::from_secs(20))
         .redirect(reqwest::redirect::Policy::none())

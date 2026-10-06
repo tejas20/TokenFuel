@@ -9,12 +9,14 @@ function Get-FuelHash([string]$Path) {
     finally { $fuelStream.Dispose(); $fuelHasher.Dispose() }
 }
 $fuelVersion = 'v0.2.0'
+# A rebuilt release needs its own cache so an older 0.2.0 executable is not reused.
+$fuelRevision = '2026-10-06.2'
 $fuelRepo = 'tejas20/TokenFuel'
 $fuelZip = 'TokenFuel_0.2.0_x64-portable.zip'
 if ($env:OS -ne 'Windows_NT' -or -not [Environment]::Is64BitOperatingSystem) {
     throw 'This preview requires Windows 10/11 x64.'
 }
-$fuelInstall = Join-Path $env:LOCALAPPDATA "TokenFuel/Preview/$fuelVersion"
+$fuelInstall = Join-Path $env:LOCALAPPDATA "TokenFuel/Preview/$fuelVersion/$fuelRevision"
 $fuelExe = Join-Path $fuelInstall 'TokenFuel.exe'
 $fuelManifest = Join-Path $fuelInstall 'executable.sha256'
 $fuelCached = (Test-Path -LiteralPath $fuelExe) -and (Test-Path -LiteralPath $fuelManifest)
@@ -25,7 +27,7 @@ if (-not $fuelCached) {
     $fuelStage = Join-Path ([IO.Path]::GetTempPath()) ('TokenFuel-download-' + [Guid]::NewGuid())
     New-Item -ItemType Directory -Path $fuelStage | Out-Null
     try {
-        Write-Host 'Downloading public TokenFuel prerelease...'
+        Write-Host 'Downloading public TokenFuel release...'
         [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
         $fuelReleaseUrl = "https://github.com/$fuelRepo/releases/download/$fuelVersion"
         foreach ($fuelAsset in @($fuelZip, 'SHA256SUMS.txt')) {

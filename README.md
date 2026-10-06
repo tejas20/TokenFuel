@@ -2,13 +2,13 @@
 
 [![Sponsor @tejas20](https://img.shields.io/badge/Sponsor-%40tejas20-ea4aaa?logo=githubsponsors)](https://github.com/sponsors/tejas20)
 
-**0.2.0 Windows prerelease:** the compact quota strip, account focus and automatic local detection are included in these downloads. See the [changelog](CHANGELOG.md).
+**0.2.0 Windows release:** the wrapping quota rows, visible Move/Refresh controls, account focus and provider connection fixes are included in these downloads. See the [changelog](CHANGELOG.md).
 
-A Windows desktop widget for remaining AI subscription allowances. Maintained by [@tejas20](https://github.com/tejas20); MIT licensed. A taskbar-height horizontal strip shows each account's reported quota windows as separate percentages and meters. Click a provider for reset countdowns and connection details, or focus one account in a narrower bar. It includes separate account/workspace pools, bars or rings, tray controls, remembered position, optional startup and threshold alerts.
+A Windows desktop widget for remaining AI subscription allowances. Maintained by [@tejas20](https://github.com/tejas20); MIT licensed. A compact widget shows each account's reported quota windows as separate percentages and meters. Click a provider for reset countdowns and connection details, or focus one account in a narrower bar. It includes separate account/workspace pools, bars or rings, tray controls, remembered position, optional startup and threshold alerts.
 
 ## Widget preview
 
-**All accounts** — a 48 px tall strip, up to 480 px wide. Each reported quota has its own label, remaining value and meter; low allowances turn amber. Additional accounts or longer quota names scroll horizontally, keeping the menu accessible.
+**All accounts** — up to 544 px wide, with 48 px provider rows and visible Move, Refresh and Menu controls. Each reported quota has its own label, remaining value and meter; low allowances turn amber. Additional accounts and longer quota names wrap onto visible rows. Generic windows use 5h, Week, Month and Day; named model pools stay separate.
 
 ![TokenFuel application showing a monthly allowance and separate five-hour and weekly quotas in the compact strip](docs/images/widget-strip.jpg)
 
@@ -16,20 +16,20 @@ A Windows desktop widget for remaining AI subscription allowances. Maintained by
 
 ![TokenFuel application with Gemini quota details open, separate meters, reset countdowns and a Focus this account action](docs/images/widget-details.jpg)
 
-**Focus mode** — choose **Focus this account** in the details panel or select an account from the menu. A typical two-quota bar is 300 × 48 px. The selection is saved across restarts; a disabled or removed account falls back to the remaining enabled accounts. The account dropdown switches focus or returns to **All accounts**. An amber count on the menu indicates other accounts with fresh low allowances.
+**Focus mode** — choose **Focus this account** in the details panel or select an account from the menu. The bar starts at 300 px wide and wraps quotas when needed to keep the account selector and controls visible. The selection is saved across restarts; a disabled or removed account falls back to the remaining enabled accounts. The account dropdown switches focus or returns to **All accounts**. An amber count on the menu indicates other accounts with fresh low allowances.
 
 ![TokenFuel application in Codex focus mode with five-hour and weekly allowances and an indicator for another account running low](docs/images/widget-focus.jpg)
 
-The **… menu** contains Refresh usage, Always on top, account focus, bars/rings, Settings and Move widget. Drag the left edge of the bar or the Move widget control to reposition it. Settings manages connections, theme, opacity, Windows startup, edge snapping, polling and alerts. Stale or failed cached readings are dimmed and marked with a warning; manual snapshots have a pencil marker. Only enabled connections appear, with one Connect tile when none are enabled.
+Move and Refresh icons sit beside the **… menu** for direct access. The menu also contains Refresh usage, Always on top, account focus, bars/rings, Settings and Move widget. Drag the left edge of the bar or the Move widget control to reposition it. Settings manages connections, theme, opacity, Windows startup, edge snapping, polling and alerts. Stale or failed cached readings are dimmed and marked with a warning; manual snapshots have a pencil marker. Only enabled connections appear, with one Connect tile when none are enabled.
 
-These are screenshots of the running application frontend with fictional sample data, showing the 0.2.0 UI. Older 0.1.0 downloads retain the earlier design. The widget displays only accounts and quota windows reported by the selected source; these examples do not certify live support for every subscription tier.
+These are screenshots of the earlier 0.2.0 frontend with fictional sample data. The updated release adds wrapping rows and visible Move/Refresh controls. The widget displays only accounts and quota windows reported by the selected source; these examples do not certify live support for every subscription tier.
 
 ## Install and run
 
 **Recommended: download the Windows installer.** No Git, GitHub CLI, Rust, Node, pnpm or Python is needed to run the prebuilt app.
 
 1. Open [TokenFuel releases](https://github.com/tejas20/TokenFuel/releases).
-2. Open prerelease `v0.2.0` and download `TokenFuel_0.2.0_x64-setup.exe`.
+2. Open release `v0.2.0` and download `TokenFuel_0.2.0_x64-setup.exe`.
 3. Run the installer, then open TokenFuel from the Start menu. Supported local sources are detected automatically; use Settings to review connection issues or disable sources. Windows startup is opt-in.
 
 Requires Windows 10/11 x64. The installer installs for the current user and includes a Microsoft WebView2 bootstrapper to install the runtime if missing (internet required). Use `TokenFuel_0.2.0_x64-offline-setup.exe` when installation must work without downloading WebView2. Public downloads need no GitHub account. The binaries are unsigned. Native ARM64 and 32-bit builds are not included.
@@ -47,7 +47,7 @@ git clone https://github.com/tejas20/TokenFuel.git
 if ($LASTEXITCODE -eq 0) { .\TokenFuel\Start-TokenFuel.cmd }
 ```
 
-From an existing checkout, the single command is `.\Start-TokenFuel.cmd`. It downloads the prebuilt app, verifies the ZIP against the release's SHA-256 checksum and caches it under `%LOCALAPPDATA%\TokenFuel\Preview\v0.2.0`. Subsequent launches verify the cached executable against its local checksum. It needs no developer toolchain, but WebView2 must already be installed. The launcher is pinned to this release; it does not automatically update. Checksums check file integrity; they do not replace publisher code signing. When upgrading an older checkout, quit TokenFuel from its tray menu, run `git pull --ff-only`, then run the launcher again.
+From an existing checkout, the single command is `.\Start-TokenFuel.cmd`. It downloads the prebuilt app, verifies the ZIP against the release's SHA-256 checksum and caches it under `%LOCALAPPDATA%\TokenFuel\Preview\v0.2.0\2026-10-06.2`. This rebuild uses a new cache directory so an earlier 0.2.0 executable is not reused. Subsequent launches verify the cached executable against its local checksum. It needs no developer toolchain, but WebView2 must already be installed. The launcher is pinned to this release; it does not automatically update. Checksums check file integrity; they do not replace publisher code signing. When upgrading an older checkout, quit TokenFuel from its tray menu, run `git pull --ff-only`, then run the launcher again.
 
 ### Connect accounts
 
@@ -65,8 +65,8 @@ TokenFuel opens on remaining usage and automatically enables supported local sou
 | OpenCode Go | Experimental Go status; monitor configuration or account secret | Synthetic fixtures only; live validation outstanding |
 | Cursor | Experimental local Cursor sign-in and usage summary | Synthetic fixtures only; live validation outstanding |
 | Grok | Experimental Grok CLI auth and Build credits | Synthetic fixtures only; ordinary Grok chat counters unsupported |
-| GitHub Copilot | Existing Copilot / GitHub CLI sign-in and quota endpoint | Synthetic fixtures only; live validation outstanding |
-| Google Antigravity | Experimental local sign-in and model quotas | Synthetic fixtures only; live validation outstanding |
+| GitHub Copilot | Existing Copilot / GitHub CLI sign-in and quota endpoint | Live read succeeded on this PC; synthetic Free-plan fixture coverage |
+| Google Antigravity | Experimental local sign-in and model quotas | Live read succeeded on this PC; wider plan validation outstanding |
 
 Codex counters are labelled Codex. They do not represent every ordinary ChatGPT model. Browser capture does not reload a provider page or infer reset dates, window limits, or currency. Refresh the provider's Usage view before capturing. Google or enterprise SSO may reject embedded sign-in; use manual snapshots if that happens. Enterprise monthly support remains provisional until compared on the office laptop.
 

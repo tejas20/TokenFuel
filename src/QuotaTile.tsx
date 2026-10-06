@@ -154,7 +154,7 @@ export function QuotaWindow({
     <span
       className={`quota-window provider ${a.provider} ${detailed ? "detail-window" : ""} ${p !== null && p < 20 ? "low" : ""} ${state !== "available" ? "unverified" : ""}`}
       aria-label={`${label} · ${amount} · ${status} · ${reset}`}
-      title={`${q?.product ? `${q.product} · ` : ""}${label} · ${q?.scope || "account"}\n${amount}\n${reset}\n${status} · ${Number.isFinite(age) ? age : "?"}m ago`}
+      title={`${q?.product ? `${q.product} · ` : ""}${q?.name || label} · ${q?.scope || "account"}\n${amount}\n${reset}\n${status} · ${Number.isFinite(age) ? age : "?"}m ago`}
     >
       <span className="tile-quota">
         {q && a.pinnedLimit === q.id && (

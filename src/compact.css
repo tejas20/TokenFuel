@@ -1,4 +1,4 @@
-/* Combined quota strip: 48px surface, independent meters, details on demand. */
+/* Compact provider rows: grow vertically so every allowance stays visible. */
 body {
   padding: 6px;
 }
@@ -23,7 +23,7 @@ body {
 .compact-surface {
   display: flex;
   align-items: center;
-  height: 48px;
+  min-height: 48px;
   max-width: 100%;
   background: var(--surface);
   border: 1px solid #ffffff20;
@@ -33,43 +33,38 @@ body {
 }
 .compact .accounts {
   display: flex;
+  flex-wrap: wrap;
   flex: 1;
   min-width: 0;
-  height: 100%;
   padding: 0;
   gap: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: #7b8ca566 transparent;
+  align-items: stretch;
 }
 .compact .accounts[hidden] {
   display: none;
 }
-.compact .accounts::-webkit-scrollbar {
-  height: 3px;
-}
-.compact .accounts::-webkit-scrollbar-thumb {
-  background: #7b8ca566;
-  border-radius: 3px;
-}
 .compact .quota-tile.provider {
   display: flex;
-  flex: 1 0 auto;
+  flex: 1 1 max-content;
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
   gap: 4px;
   min-width: 0;
   padding: 5px 3px;
-  height: 100%;
+  min-height: 48px;
+  max-width: 100%;
   border: 0;
   border-radius: 0;
   text-align: left;
   position: relative;
 }
 .compact .quota-tile.provider + .provider {
-  border-left: 1px solid var(--border);
+  border-left: 0;
+}
+.compact .quota-tile.provider {
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 .compact .quota-tile[aria-expanded="true"] {
   background: var(--hover);
@@ -93,24 +88,26 @@ body {
 }
 .tile-limits {
   display: flex;
-  gap: 0;
+  flex-wrap: wrap;
+  gap: 8px 0;
   min-width: 0;
   flex: 1;
 }
 .compact .quota-window.provider {
   position: relative;
   display: grid;
-  grid-template-columns: auto auto;
-  grid-template-rows: 18px 5px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto 5px;
   align-content: center;
   align-items: baseline;
   column-gap: 5px;
   row-gap: 4px;
   width: max-content;
   min-width: 64px;
+  max-width: 100%;
   padding: 0 3px;
   border: 0;
-  flex: 1 0 auto;
+  flex: 1 1 auto;
 }
 .compact .quota-window + .quota-window {
   border-left: 1px solid var(--border);
@@ -121,7 +118,8 @@ body {
   font-size: 11px;
   color: var(--muted);
   line-height: 18px;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .tile-quota svg {
   width: 9px;
@@ -218,9 +216,11 @@ body {
 .compact-tools {
   display: flex;
   align-items: center;
-  width: 34px;
+  width: 98px;
   flex-shrink: 0;
   height: 32px;
+  align-self: flex-start;
+  margin-top: 7px;
   border-left: 1px solid var(--border);
   color: var(--muted);
 }
@@ -234,6 +234,13 @@ body {
   width: 21px;
   height: 21px;
 }
+.compact-tools .move-widget {
+  cursor: grab;
+  touch-action: none;
+}
+.compact-tools .move-widget:active {
+  cursor: grabbing;
+}
 .menu-indicator {
   position: absolute;
   top: 0;
@@ -243,7 +250,7 @@ body {
 }
 .drag-edge {
   width: 5px;
-  height: 100%;
+  align-self: stretch;
   flex-shrink: 0;
   cursor: grab;
   touch-action: none;
@@ -252,6 +259,8 @@ body {
   padding: 0 8px 0 5px;
   gap: 5px;
   height: 34px;
+  align-self: flex-start;
+  margin-top: 6px;
   border-radius: 0;
   border-right: 1px solid var(--border);
   flex-shrink: 0;
