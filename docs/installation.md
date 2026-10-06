@@ -1,22 +1,22 @@
 # Install TokenFuel on Windows
 
-Automatic startup discovery and the preference fixes described below are currently unreleased; existing 0.1.0 downloads use manual setup. See the [changelog](../CHANGELOG.md).
+Version 0.2.0 is a public prerelease with the compact quota strip, account focus, automatic local detection and preference fixes described below. See the [changelog](../CHANGELOG.md).
 
-**Download the installer, run it, and choose your provider.** No coding, repository clone, Git, GitHub CLI, Node.js, Rust, pnpm or Python is needed. This release supports Windows 10/11 x64. Native ARM64 and 32-bit builds are not included.
+**Download the installer, run it, and review detected connections in Settings.** No coding, repository clone, Git, GitHub account, GitHub CLI, Node.js, Rust, pnpm or Python is needed. This release supports Windows 10/11 x64. Native ARM64 and 32-bit builds are not included.
 
 ## Recommended installation
 
-1. Open [TokenFuel 0.1.0](https://github.com/tejas20/TokenFuel/releases/tag/v0.1.0) in your browser. If the repository is private, sign in with an account that has read access.
-2. Download **TokenFuel_0.1.0_x64-setup.exe** and run it. It installs for your Windows user; the app itself does not require administrator access.
-3. Open TokenFuel from the Start menu. In the published 0.1.0 build, setup opens when no account is connected: choose the provider, allow the connection, and Save. Experimental sources also need their separate opt-in. The next release opens the usage strip first and detects supported local sources automatically.
+1. Open [TokenFuel 0.2.0](https://github.com/tejas20/TokenFuel/releases/tag/v0.2.0) in your browser. Downloads are public and need no GitHub sign-in.
+2. Download **TokenFuel_0.2.0_x64-setup.exe** and run it. It installs for your Windows user; the app itself does not require administrator access.
+3. Open TokenFuel from the Start menu. The usage strip opens first and detects supported local sources automatically, including experimental adapters. Use Settings to review connection issues or disable sources. Gemini still requires an isolated browser sign-in.
 
 The installer includes Microsoft's small WebView2 bootstrapper. It checks for the runtime and installs it if missing; that step needs internet. WebView2 Evergreen receives Microsoft's runtime updates. Existing WebView2 is reused. [Tauri installer options](https://v2.tauri.app/distribute/windows-installer/), [Microsoft runtime distribution](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution).
 
-Public releases can be downloaded without repository access. If a release is hosted in a private repository, collaborators need **read access**; draft releases have different access restrictions.
+Use the published 0.2.0 prerelease for the current UI. Older 0.1.0 downloads retain the earlier setup and widget. Draft releases are maintainer-only previews.
 
 ## Offline or managed machines
 
-Use **TokenFuel_0.1.0_x64-offline-setup.exe** when installation must work without downloading WebView2. It contains Microsoft's larger Evergreen standalone runtime installer. Quota services still need internet after installation. Organization policy can require IT approval or block a runtime install; TokenFuel does not bypass those controls.
+Use **TokenFuel_0.2.0_x64-offline-setup.exe** when installation must work without downloading WebView2. It contains Microsoft's larger Evergreen standalone runtime installer. Quota services still need internet after installation. Organization policy can require IT approval or block a runtime install; TokenFuel does not bypass those controls.
 
 These builds are unsigned. Windows may show an unknown publisher or SmartScreen warning. Publisher signing is the next distribution improvement; checksums do not replace it.
 
@@ -43,14 +43,14 @@ Browser sign-ins are isolated and temporary. SSO can reject embedded sign-in; ma
 
 ## Portable alternative
 
-Extract **TokenFuel_0.1.0_x64-portable.zip** and double-click `TokenFuel.exe`. WebView2 must already be installed; otherwise use either installer. Configuration and quota cache still use Windows application storage for `com.tejas20.tokenfuel`; supported secrets use Windows Credential Manager. Portable does not mean settings or secrets travel with the ZIP.
+Extract **TokenFuel_0.2.0_x64-portable.zip** and double-click `TokenFuel.exe`. WebView2 must already be installed; otherwise use either installer. Configuration and quota cache still use Windows application storage for `com.tejas20.tokenfuel`; supported secrets use Windows Credential Manager. Portable does not mean settings or secrets travel with the ZIP.
 
 ## Verify and update
 
 Download **SHA256SUMS.txt** from the same release and compare the SHA-256 entry for your exact installer or ZIP. PowerShell example:
 
 ```powershell
-Get-FileHash .\TokenFuel_0.1.0_x64-setup.exe -Algorithm SHA256
+Get-FileHash .\TokenFuel_0.2.0_x64-setup.exe -Algorithm SHA256
 Get-Content .\SHA256SUMS.txt
 ```
 
@@ -58,13 +58,13 @@ A mismatch means the download must not be run. Matching hashes check file integr
 
 There is no automatic updater yet. Quit using the tray menu, download the newer installer and run it. Existing settings are retained. Settings shows the running app's version. Downloaded binaries do not automatically include later `main` commits.
 
-The optional `Start-TokenFuel.cmd` launcher is for private testers who already use GitHub CLI. Authenticate with `gh auth login` and run it from a checkout; it downloads and verifies the portable ZIP pinned to `v0.1.0`, then caches it under `%LOCALAPPDATA%\TokenFuel\Preview\v0.1.0`. It requires WebView2 and does not automatically update. `-DownloadOnly` downloads and verifies without starting. Normal users should choose the installer.
+The optional `Start-TokenFuel.cmd` launcher works from a checkout without GitHub CLI or authentication. It downloads and verifies the public portable ZIP pinned to `v0.2.0`, then caches it under `%LOCALAPPDATA%\TokenFuel\Preview\v0.2.0`. It requires WebView2 and does not automatically update. `-DownloadOnly` downloads and verifies without starting. Normal users should choose the installer.
 
 ## Troubleshooting
 
-- **Release missing / 404:** if the repository is private, sign in with an account that has access. Published releases need read access; older drafts need push access.
+- **Release missing / 404:** use the published `v0.2.0` prerelease link above; older draft previews are not public downloads.
 - **Runtime missing / blocked download:** try the offline installer or ask your IT administrator.
 - **Usage unavailable:** follow the source's setup hint, sign in to the provider's app/CLI, authorize the source and Refresh. The app does not expose quota counters a provider does not supply.
 - **App appears hidden:** run it again or use the tray menu.
 
-See [release validation](release-validation-v0.1.0.md) and the [office checklist](office-validation.md) for coverage and remaining checks.
+See [release validation](release-validation-v0.2.0.md) and the [office checklist](office-validation.md) for coverage and remaining checks.

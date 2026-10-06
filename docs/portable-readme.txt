@@ -1,4 +1,4 @@
-TokenFuel 0.1.0 for Windows 10/11 x64
+TokenFuel 0.2.0 for Windows 10/11 x64
 
 Extract the ZIP and double-click TokenFuel.exe. No developer tools are needed.
 If WebView2 is missing, use the regular installer or offline installer instead.
@@ -17,8 +17,10 @@ The ZIP is portable, but configuration and credentials are not carried with it.
 Quit from the tray before updating. Updates retain your local configuration.
 
 Downloads and full installation guide:
-https://github.com/tejas20/TokenFuel/releases/tag/v0.1.0
+https://github.com/tejas20/TokenFuel/releases/tag/v0.2.0
 https://github.com/tejas20/TokenFuel/blob/main/docs/installation.md
 
 This build is unsigned. Checksums check integrity, not publisher identity.
-If hosted in a private repository, downloads require repository read access.
+Public release downloads need no GitHub account or developer tools.
+
+Maintained by @tejas20. Optional support: https://github.com/sponsors/tejas20

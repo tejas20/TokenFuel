@@ -8,9 +8,9 @@ function Get-FuelHash([string]$Path) {
     try { return ([BitConverter]::ToString($fuelHasher.ComputeHash($fuelStream))).Replace('-','') }
     finally { $fuelStream.Dispose(); $fuelHasher.Dispose() }
 }
-$fuelVersion = 'v0.1.0'
+$fuelVersion = 'v0.2.0'
 $fuelRepo = 'tejas20/TokenFuel'
-$fuelZip = 'TokenFuel_0.1.0_x64-portable.zip'
+$fuelZip = 'TokenFuel_0.2.0_x64-portable.zip'
 if ($env:OS -ne 'Windows_NT' -or -not [Environment]::Is64BitOperatingSystem) {
     throw 'This preview requires Windows 10/11 x64.'
 }
@@ -22,17 +22,15 @@ if ($fuelCached) {
     $fuelCached = (Get-FuelHash $fuelExe) -eq (Get-Content -LiteralPath $fuelManifest -Raw).Trim()
 }
 if (-not $fuelCached) {
-    $fuelGhCommand = Get-Command gh -ErrorAction SilentlyContinue
-    $fuelGh = if ($fuelGhCommand) { $fuelGhCommand.Source } else { Join-Path $env:ProgramFiles 'GitHub CLI/gh.exe' }
-    if (-not (Test-Path -LiteralPath $fuelGh)) {
-        throw 'Private preview: install GitHub CLI (winget install GitHub.cli), run gh auth login, then retry. No developer toolchain is needed.'
-    }
     $fuelStage = Join-Path ([IO.Path]::GetTempPath()) ('TokenFuel-download-' + [Guid]::NewGuid())
     New-Item -ItemType Directory -Path $fuelStage | Out-Null
     try {
-        Write-Host 'Downloading private TokenFuel preview...'
-        & $fuelGh release download $fuelVersion --repo $fuelRepo --pattern $fuelZip --pattern 'SHA256SUMS.txt' --dir $fuelStage
-        if ($LASTEXITCODE -ne 0) { throw 'Download failed. Run gh auth login with an account that can access tejas20/TokenFuel.' }
+        Write-Host 'Downloading public TokenFuel prerelease...'
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        $fuelReleaseUrl = "https://github.com/$fuelRepo/releases/download/$fuelVersion"
+        foreach ($fuelAsset in @($fuelZip, 'SHA256SUMS.txt')) {
+            Invoke-WebRequest -UseBasicParsing -Uri "$fuelReleaseUrl/$fuelAsset" -OutFile (Join-Path $fuelStage $fuelAsset)
+        }
         $fuelPattern = '^([0-9a-fA-F]{64})\s+\*?' + [Regex]::Escape($fuelZip) + '$'
         $fuelChecksums = @(Get-Content -LiteralPath (Join-Path $fuelStage 'SHA256SUMS.txt') | Where-Object { $_ -match $fuelPattern })
         if ($fuelChecksums.Count -ne 1) { throw 'The release checksum is missing or ambiguous; nothing was launched.' }
@@ -68,5 +66,5 @@ foreach ($fuelExisting in [Diagnostics.Process]::GetProcessesByName('TokenFuel')
         }
     } catch { } finally { $fuelExisting.Dispose() }
 }
-Write-Host 'Starting TokenFuel. Connect an account in Settings; startup remains opt-in.'
-Start-Process -FilePath $fuelExe
+Write-Host 'Starting TokenFuel. Review connections in Settings; startup remains opt-in.'
+Start-Process -FilePath $fuelExe -WindowStyle Hidden

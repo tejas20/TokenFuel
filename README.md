@@ -1,8 +1,10 @@
 # TokenFuel
 
-This branch includes unreleased improvements; existing 0.1.0 downloads do not include them. See the [changelog](CHANGELOG.md).
+[![Sponsor @tejas20](https://img.shields.io/badge/Sponsor-%40tejas20-ea4aaa?logo=githubsponsors)](https://github.com/sponsors/tejas20)
 
-A Windows desktop widget for remaining AI subscription allowances. First release: **0.1.0**; MIT licensed. A taskbar-height horizontal strip shows each account's reported quota windows as separate percentages and meters. Click a provider for reset countdowns and connection details, or focus one account in a narrower bar. It includes separate account/workspace pools, bars or rings, tray controls, remembered position, optional startup and threshold alerts.
+**0.2.0 Windows prerelease:** the compact quota strip, account focus and automatic local detection are included in these downloads. See the [changelog](CHANGELOG.md).
+
+A Windows desktop widget for remaining AI subscription allowances. Maintained by [@tejas20](https://github.com/tejas20); MIT licensed. A taskbar-height horizontal strip shows each account's reported quota windows as separate percentages and meters. Click a provider for reset countdowns and connection details, or focus one account in a narrower bar. It includes separate account/workspace pools, bars or rings, tray controls, remembered position, optional startup and threshold alerts.
 
 ## Widget preview
 
@@ -20,32 +22,32 @@ A Windows desktop widget for remaining AI subscription allowances. First release
 
 The **… menu** contains Refresh usage, Always on top, account focus, bars/rings, Settings and Move widget. Drag the left edge of the bar or the Move widget control to reposition it. Settings manages connections, theme, opacity, Windows startup, edge snapping, polling and alerts. Stale or failed cached readings are dimmed and marked with a warning; manual snapshots have a pencil marker. Only enabled connections appear, with one Connect tile when none are enabled.
 
-These are screenshots of the running application frontend with fictional sample data, including the new unreleased UI. Existing 0.1.0 downloads retain the earlier design. The widget displays only accounts and quota windows reported by the selected source; these examples do not certify live support for every subscription tier.
+These are screenshots of the running application frontend with fictional sample data, showing the 0.2.0 UI. Older 0.1.0 downloads retain the earlier design. The widget displays only accounts and quota windows reported by the selected source; these examples do not certify live support for every subscription tier.
 
 ## Install and run
 
 **Recommended: download the Windows installer.** No Git, GitHub CLI, Rust, Node, pnpm or Python is needed to run the prebuilt app.
 
 1. Open [TokenFuel releases](https://github.com/tejas20/TokenFuel/releases).
-2. Open release `v0.1.0` and download `TokenFuel_0.1.0_x64-setup.exe`.
-3. Run the installer, then open TokenFuel from the Start menu. In 0.1.0, choose your provider, allow the connection, and Save. Windows startup is opt-in. Automatic local detection is part of the unreleased source changes shown above.
+2. Open prerelease `v0.2.0` and download `TokenFuel_0.2.0_x64-setup.exe`.
+3. Run the installer, then open TokenFuel from the Start menu. Supported local sources are detected automatically; use Settings to review connection issues or disable sources. Windows startup is opt-in.
 
-Requires Windows 10/11 x64. The installer installs for the current user and includes a Microsoft WebView2 bootstrapper to install the runtime if missing (internet required). Use `TokenFuel_0.1.0_x64-offline-setup.exe` when installation must work without downloading WebView2. If the repository is private, download access requires repository read access. The binaries are unsigned. Native ARM64 and 32-bit builds are not included.
+Requires Windows 10/11 x64. The installer installs for the current user and includes a Microsoft WebView2 bootstrapper to install the runtime if missing (internet required). Use `TokenFuel_0.2.0_x64-offline-setup.exe` when installation must work without downloading WebView2. Public downloads need no GitHub account. The binaries are unsigned. Native ARM64 and 32-bit builds are not included.
 
-**Portable alternative:** download `TokenFuel_0.1.0_x64-portable.zip` from the same release, extract it, and double-click `TokenFuel.exe`. WebView2 must already be installed. Configuration and credentials still use Windows application storage.
+**Portable alternative:** download `TokenFuel_0.2.0_x64-portable.zip` from the same release, extract it, and double-click `TokenFuel.exe`. WebView2 must already be installed. Configuration and credentials still use Windows application storage.
 
 See the [installation guide](docs/installation.md) for checksums, updates, access troubleshooting and the optional launcher.
 
-### Optional: start the private release in one command
+### Optional: start the public release from a checkout
 
-For testers who already use Git and [GitHub CLI](https://cli.github.com/), authenticate once with `gh auth login` using an account with repository read access. From a parent folder without an existing `TokenFuel` checkout, run in PowerShell:
+For users who already have Git, run this in PowerShell from a parent folder without an existing `TokenFuel` checkout. The launcher needs neither GitHub CLI nor GitHub sign-in:
 
 ```powershell
-gh repo clone tejas20/TokenFuel
+git clone https://github.com/tejas20/TokenFuel.git
 if ($LASTEXITCODE -eq 0) { .\TokenFuel\Start-TokenFuel.cmd }
 ```
 
-From an existing checkout, the single command is `.\Start-TokenFuel.cmd`. It downloads the prebuilt app, verifies the ZIP against the release's SHA-256 checksum and caches it under `%LOCALAPPDATA%\TokenFuel\Preview\v0.1.0`. Subsequent launches verify the cached executable against its local checksum. It needs no developer toolchain, but WebView2 must already be installed. The launcher is pinned to this release; it does not automatically update. Checksums check file integrity; they do not replace publisher code signing. When upgrading an older checkout, quit TokenFuel from its tray menu, run `git pull --ff-only`, then run the launcher again.
+From an existing checkout, the single command is `.\Start-TokenFuel.cmd`. It downloads the prebuilt app, verifies the ZIP against the release's SHA-256 checksum and caches it under `%LOCALAPPDATA%\TokenFuel\Preview\v0.2.0`. Subsequent launches verify the cached executable against its local checksum. It needs no developer toolchain, but WebView2 must already be installed. The launcher is pinned to this release; it does not automatically update. Checksums check file integrity; they do not replace publisher code signing. When upgrading an older checkout, quit TokenFuel from its tray menu, run `git pull --ff-only`, then run the launcher again.
 
 ### Connect accounts
 
@@ -97,3 +99,7 @@ Detected local sources automatically reuse existing app/CLI sign-ins for quota r
 Polling defaults to two minutes, with separate account backoff and provider Retry-After floors. Percentages require a supplied percentage or valid denominator. Manual and browser snapshots retain their capture time; cached data and connection errors remain explicit. Monthly reset dates are provider supplied, never assumed to be the first. Notifications fire only on observed downward crossings of 20% and 10%.
 
 See [installation](docs/installation.md), [development setup](docs/setup.md), [office validation](docs/office-validation.md), [research](docs/provider-research.md), and [third-party notices](THIRD_PARTY_NOTICES.md).
+
+## Support and contribute
+
+Support development through [GitHub Sponsors](https://github.com/sponsors/tejas20). Sponsorship is optional; TokenFuel remains MIT licensed. For bugs and ideas, [open an issue](https://github.com/tejas20/TokenFuel/issues). See [contributing](CONTRIBUTING.md) for development checks and [security reporting](SECURITY.md) for private vulnerability reports.

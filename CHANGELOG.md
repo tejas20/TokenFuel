@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.2.0 — 2026-10-06 (prerelease)
+
+- Publish the repository under its existing owner, @tejas20, with GitHub Sponsors funding links and contributor/security reporting guidance.
+- Make the optional checksum-verifying launcher download public release assets without GitHub CLI or authentication.
+
 - Replace tall quota tiles with a 48 px horizontal strip capped at 480 px wide, with independent meters for every quota and horizontal scrolling for larger collections.
 - Add provider detail panels, saved account focus, an account switcher, and a single menu for refresh, appearance, pinning and Settings. Keep warnings for other low accounts visible during focus.
 - Add application screenshots and a guide to the combined bar in the README.

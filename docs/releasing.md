@@ -1,6 +1,6 @@
 # Publishing a GitHub release
 
-Use this checklist for the next release. The changes under **Unreleased** in [CHANGELOG.md](../CHANGELOG.md) are not part of the existing 0.1.0 downloads.
+Use this checklist for the next release. Version 0.2.0 contains the compact quota strip and automatic local detection; older 0.1.0 downloads retain the earlier UI. Changes under **Unreleased** in [CHANGELOG.md](../CHANGELOG.md) are not part of published downloads.
 
 1. Choose a new version and update `package.json`, `src-tauri/tauri.conf.json`, both applicable Cargo package versions and the lockfile. Update download names and links in the README, installation guide, portable README, and optional launcher if it should target the new release.
 2. Run `pnpm install --frozen-lockfile`, `pnpm test`, `pnpm build`, `cargo test --workspace --locked`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, and `cargo fmt --all --check` on Windows.
