@@ -1,6 +1,6 @@
 # Prebuilt app launcher. No Rust, Node.js, Python, admin rights, or provider secrets required.
 [CmdletBinding()]
-param([switch]$DownloadOnly)
+param([switch]$DownloadOnly, [switch]$Diagnose)
 $ErrorActionPreference = 'Stop'
 function Get-FuelHash([string]$Path) {
     $fuelHasher = [Security.Cryptography.SHA256]::Create()
@@ -19,6 +19,11 @@ if ($env:OS -ne 'Windows_NT' -or -not [Environment]::Is64BitOperatingSystem) {
 $fuelInstall = Join-Path $env:LOCALAPPDATA "TokenFuel/Preview/$fuelVersion/$fuelRevision"
 $fuelExe = Join-Path $fuelInstall 'TokenFuel.exe'
 $fuelManifest = Join-Path $fuelInstall 'executable.sha256'
+if ($Diagnose) {
+    # Inspect the existing cache without downloading or launching anything.
+    & (Join-Path $PSScriptRoot 'Test-TokenFuel.ps1') -ExecutablePath $fuelExe
+    return
+}
 $fuelCached = (Test-Path -LiteralPath $fuelExe) -and (Test-Path -LiteralPath $fuelManifest)
 if ($fuelCached) {
     $fuelCached = (Get-FuelHash $fuelExe) -eq (Get-Content -LiteralPath $fuelManifest -Raw).Trim()
@@ -69,4 +74,24 @@ foreach ($fuelExisting in [Diagnostics.Process]::GetProcessesByName('TokenFuel')
     } catch { } finally { $fuelExisting.Dispose() }
 }
 Write-Host 'Starting TokenFuel. Review connections in Settings; startup remains opt-in.'
-Start-Process -FilePath $fuelExe -WindowStyle Hidden
+try {
+    Start-Process -FilePath $fuelExe -WorkingDirectory $fuelInstall -WindowStyle Hidden -ErrorAction Stop
+} catch {
+    $fuelLaunchError = $_.Exception
+    $fuelNativeCode = $null
+    for ($fuelCause = $fuelLaunchError; $null -ne $fuelCause; $fuelCause = $fuelCause.InnerException) {
+        if ($fuelCause -is [ComponentModel.Win32Exception]) { $fuelNativeCode = $fuelCause.NativeErrorCode; break }
+    }
+    [Console]::Error.WriteLine("Windows could not start TokenFuel: $($fuelLaunchError.Message)")
+    if ($null -ne $fuelNativeCode) { [Console]::Error.WriteLine("Windows error code: $fuelNativeCode") }
+    if ($fuelNativeCode -in 5,577,1260) {
+        [Console]::Error.WriteLine('Windows denied execution. Possible causes include application-control policy, antivirus, or file permissions; the error alone does not identify which.')
+    }
+    try {
+        & (Join-Path $PSScriptRoot 'Test-TokenFuel.ps1') -ExecutablePath $fuelExe -NativeErrorCode $fuelNativeCode
+    } catch {
+        [Console]::Error.WriteLine("Diagnostics could not be saved: $($_.Exception.Message)")
+    }
+    [Console]::Error.WriteLine('On a managed PC, give the report and executable SHA-256 to IT for approval. See docs/installation.md. A portable download or WinGet install still has to satisfy Windows policy.')
+    exit 1
+}

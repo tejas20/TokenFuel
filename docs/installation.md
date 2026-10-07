@@ -20,6 +20,34 @@ Use **TokenFuel_0.2.0_x64-offline-setup.exe** when installation must work withou
 
 These builds are unsigned. Windows may show an unknown publisher or SmartScreen warning. Publisher signing is the next distribution improvement; checksums do not replace it.
 
+### SmartScreen or "Access is denied" on an office PC
+
+These are distinct observations. **"Windows protected your PC"** is a SmartScreen reputation warning. The published 0.2.0 files are unsigned. Signing future releases identifies the publisher, but even a signed new release can still warn until it gains reputation. See [Microsoft's explanation](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation).
+
+**`Start-Process ... Access is denied`** means Windows refused to launch the executable. The screenshot alone cannot distinguish AppLocker/App Control, endpoint antivirus, file permissions, or another Windows restriction. It is not evidence that a provider connection failed. A missing WebView2 runtime is a separate prerequisite and does not establish the cause of this error.
+
+With the updated checkout, inspect the cached executable without downloading or starting it:
+
+```powershell
+.\Start-TokenFuel.cmd -Diagnose
+```
+
+The launcher also saves diagnostics automatically after a failed launch and returns exit code 1. To inspect a downloaded installer or an extracted portable executable instead:
+
+```powershell
+.\Test-TokenFuel.ps1 -ExecutablePath "$env:USERPROFILE\Downloads\TokenFuel_0.2.0_x64-setup.exe"
+```
+
+The command prints a JSON report path in the temporary directory. It records Windows/PowerShell versions, the file path and SHA-256, signature status, Internet zone ID, WebView2 detection, and matching recent AppLocker/Code Integrity event IDs when readable. It does not read provider credentials or usage, launch the app, download files, or modify policy. Review local paths before sharing with IT. Missing or unreadable event logs do not prove an app is allowed; IT may need its endpoint-security console. [AppLocker events](https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/applocker/using-event-viewer-with-applocker), [App Control events](https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/operations/event-id-explanations).
+
+Ask IT to review the exact release hash, publisher signature (once available), and permitted deployment location. The portable launcher runs from the current user's LocalAppData directory, which some managed policies restrict. Reinstalling the same unsigned binary with another downloader does not establish trust. Do not disable SmartScreen, change application-control rules, remove download markings, or run as administrator as a blanket workaround. If PowerShell itself is restricted, give IT the original error and downloaded installer directly.
+
+### WinGet status
+
+Claude Code Usage Monitor documents a published WinGet package. TokenFuel now has manifest-generation tooling, but **this change does not publish a TokenFuel WinGet package**. Do not expect `winget install tejas20.TokenFuel` to work until the manifests have been submitted and accepted into the WinGet community repository. See the [maintainer steps](releasing.md#windows-signing-and-winget).
+
+WinGet offers a consistent installation route and verifies the manifest's installer hash. It still runs the installer and does not exempt the app from office policy or remove TokenFuel's WebView2 requirement. The other monitor working via WinGet does not prove TokenFuel's executable is approved.
+
 ## Connect without copying tokens
 
 At launch, TokenFuel checks known local app/CLI locations and supported credential stores, then enables detected sources for quota reads. Previously disabled or removed connections are respected. Gemini needs a separate browser sign-in. See [discovery locations](discovery.md).

@@ -15,6 +15,9 @@ jobs:
       - name: Install pinned Rust
         run: rustup show
       - run: pnpm install --frozen-lockfile
+      - name: Verify Windows launcher and distribution scripts
+        shell: powershell
+        run: .\scripts\test-windows-distribution.ps1
       - run: pnpm test
       - run: pnpm build
       - run: cargo test --workspace --locked
@@ -22,7 +25,7 @@ jobs:
       - run: cargo fmt --all --check
       - name: Package regular, offline and portable builds with checksums
         shell: powershell
-        run: .\scripts\package-release.ps1
+        run: .\scripts\package-release.ps1 -AllowUnsigned
       - uses: actions/upload-artifact@v4
         with:
           name: TokenFuel-Windows
@@ -30,4 +33,6 @@ jobs:
             artifacts/release/v*/*.exe
             artifacts/release/v*/*.zip
             artifacts/release/v*/SHA256SUMS.txt
+            artifacts/release/v*/SIGNATURES.json
+            artifacts/release/v*/winget/**
           retention-days: 14

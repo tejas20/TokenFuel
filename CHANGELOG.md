@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Catch Windows launcher failures, return a nonzero exit code, and save read-only signature, hash, runtime and policy-event diagnostics; add `Start-TokenFuel.cmd -Diagnose` without downloading or launching.
+- Require signing configuration for release packaging, verify timestamped signatures on both installers and the portable app, and make unsigned CI/test packaging explicit.
+- Generate WinGet manifests from final installer bytes for review and submission. No TokenFuel WinGet package is published by this change.
+- Document SmartScreen versus managed-PC execution blocks and the remaining certificate, distribution and office validation steps.
+
 ## 0.2.0 — 2026-10-06
 
 - Remove duplicate Refresh usage and Move widget actions from the widget menu.

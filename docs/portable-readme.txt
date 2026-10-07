@@ -20,7 +20,16 @@ Downloads and full installation guide:
 https://github.com/tejas20/TokenFuel/releases/tag/v0.2.0
 https://github.com/tejas20/TokenFuel/blob/main/docs/installation.md
 
-This build is unsigned. Checksums check integrity, not publisher identity.
+Check TokenFuel.exe's Digital Signatures tab for this build's signing status.
+Published 0.2.0 downloads are unsigned. Checksums check integrity, not publisher identity.
 Public release downloads need no GitHub account or developer tools.
+
+If Windows denies launch, ask IT to review the executable and office policy.
+Run this read-only diagnostic in PowerShell from the extracted directory:
+  .\Test-TokenFuel.ps1 -ExecutablePath .\TokenFuel.exe
+It prints the path to a JSON report containing file/signature/runtime metadata
+and matching policy event IDs where accessible. Review paths before sharing.
+No provider credentials or usage data are read. No security settings are changed.
+WinGet and portable downloads do not bypass Windows application-control policy.
 
 Maintained by @tejas20. Optional support: https://github.com/sponsors/tejas20
